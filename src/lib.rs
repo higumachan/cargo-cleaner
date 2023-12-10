@@ -1,3 +1,6 @@
+pub mod notify_rw_lock;
+pub mod tui;
+
 use cargo_toml::Manifest;
 use crossbeam_channel::{unbounded, Receiver, Sender};
 use std::path::{Path, PathBuf};

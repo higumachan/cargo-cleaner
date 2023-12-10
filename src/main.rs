@@ -1,21 +1,24 @@
 use std::collections::HashSet;
 use std::path::Path;
 use std::sync::atomic::AtomicBool;
+use std::sync::mpsc::SyncSender;
 use std::sync::{Arc, Mutex, RwLock};
 use std::{error::Error, io};
 
+use cargo_cleaner::notify_rw_lock::NotifyRwLock;
+use cargo_cleaner::tui::{Event, Tui};
 use cargo_cleaner::{find_cargo_projects, ProjectTargetAnalysis};
 use crossterm::{
-    event::{self, DisableMouseCapture, EnableMouseCapture, Event, KeyCode, KeyEventKind},
+    event::{
+        self, DisableMouseCapture, EnableMouseCapture, Event as CrosstermEvent, KeyCode,
+        KeyEventKind,
+    },
     execute,
     terminal::{disable_raw_mode, enable_raw_mode, EnterAlternateScreen, LeaveAlternateScreen},
 };
 use itertools::Itertools;
 use ratatui::prelude::*;
-use ratatui::widgets::{Block, Borders, Clear, Paragraph};
-use ratatui_multi_highlight_table::{
-    Cell, Highlight, MultiHighlightTable, Row, RowHighlight, RowId, TableState,
-};
+use ratatui::widgets::*;
 use uuid::Uuid;
 
 const COLUMNS: usize = 3;
@@ -55,79 +58,49 @@ impl TableRow for ProjectTargetAnalysis {
 }
 
 struct App {
-    remove_popup: Arc<RwLock<bool>>,
+    remove_popup: Arc<NotifyRwLock<bool>>,
     state: TableState,
-    items: Arc<Mutex<Vec<ProjectTargetAnalysis>>>,
-    selected_items: HashSet<RowId>,
-    is_loading: Arc<Mutex<bool>>,
+    items: Arc<NotifyRwLock<Vec<ProjectTargetAnalysis>>>,
+    selected_items: HashSet<Uuid>,
+    is_loading: Arc<NotifyRwLock<bool>>,
 }
 
 impl App {
-    fn new() -> App {
+    fn new(notify_tx: SyncSender<()>) -> App {
         App {
-            remove_popup: Arc::new(RwLock::new(false)),
+            remove_popup: Arc::new(NotifyRwLock::new(notify_tx.clone(), false)),
             state: TableState::default(),
-            items: Arc::new(Mutex::new(vec![])),
+            items: Arc::new(NotifyRwLock::new(notify_tx.clone(), vec![])),
             selected_items: HashSet::new(),
-            is_loading: Arc::new(Mutex::new(true)),
+            is_loading: Arc::new(NotifyRwLock::new(notify_tx.clone(), true)),
         }
     }
     pub fn next(&mut self) {
-        let id = self.state.selected();
-        let items = self.items.lock().unwrap();
-        let i = if let Some(id) = id {
-            let i = items
-                .iter()
-                .find_position(|it| id == RowId::from(it.id))
-                .map(|t| t.0);
-            match i {
-                Some(i) => {
-                    if i < items.len() - 1 {
-                        i + 1
-                    } else {
-                        i
-                    }
+        let i = match self.state.selected() {
+            Some(i) => {
+                if i >= self.items.read().len() - 1 {
+                    i
+                } else {
+                    i + 1
                 }
-                None => 0,
             }
-        } else {
-            0
+            None => 0,
         };
-        self.state.select(
-            items
-                .get(i)
-                .map(|t| t.id.into())
-                .or_else(|| items.get(0).map(|t| t.id.into())),
-        );
+        self.state.select(Some(i));
     }
 
     pub fn previous(&mut self) {
-        let id = self.state.selected();
-        let items = self.items.lock().unwrap();
-        let i = if let Some(id) = id {
-            let i = items
-                .iter()
-                .find_position(|it| id == RowId::from(it.id))
-                .map(|t| t.0);
-            match i {
-                Some(i) => {
-                    if i > 0 {
-                        i - 1
-                    } else {
-                        i
-                    }
+        let i = match self.state.selected() {
+            Some(i) => {
+                if i == 0 {
+                    i
+                } else {
+                    i - 1
                 }
-                None => 0,
             }
-        } else {
-            0
+            None => 0,
         };
-        self.state.select(
-            items
-                .get(i)
-                .map(|t| t.id.into())
-                .or_else(|| items.get(0).map(|t| t.id.into())),
-        );
+        self.state.select(Some(i));
     }
 }
 
@@ -143,15 +116,16 @@ fn main() -> Result<(), Box<dyn Error>> {
     let mut terminal = Terminal::new(backend)?;
 
     // create app and run it
-    let app = App::new();
-    let items = app.items.clone();
+    let (notify_tx, notify_rx) = std::sync::mpsc::sync_channel(1);
+    let app = App::new(notify_tx);
+    let items = Arc::clone(&app.items);
 
     std::thread::spawn(move || {
         for analysis in analysis_receiver {
             match analysis {
                 Ok(analysis) => {
                     if analysis.size > 0 {
-                        let mut items = items.lock().unwrap();
+                        let mut items = items.write();
                         let insert_index = items
                             .binary_search_by_key(&std::cmp::Reverse(analysis.size), |it| {
                                 std::cmp::Reverse(it.size)
@@ -167,10 +141,10 @@ fn main() -> Result<(), Box<dyn Error>> {
     let is_loading = app.is_loading.clone();
     std::thread::spawn(move || {
         finish_receiver.recv().unwrap();
-        *is_loading.lock().unwrap() = false;
+        *is_loading.write() = false;
     });
 
-    let res = run_app(&mut terminal, app);
+    let res = run_app(&mut terminal, app, notify_rx);
 
     // restore terminal
     disable_raw_mode()?;
@@ -188,54 +162,60 @@ fn main() -> Result<(), Box<dyn Error>> {
     Ok(())
 }
 
-fn run_app<B: Backend>(terminal: &mut Terminal<B>, mut app: App) -> io::Result<()> {
-    loop {
-        terminal.draw(|f| ui(f, &mut app))?;
+fn run_app(
+    terminal: &mut Terminal<CrosstermBackend<io::Stdout>>,
+    mut app: App,
+    notify_rx: std::sync::mpsc::Receiver<()>,
+) -> anyhow::Result<()> {
+    let mut tui = Tui::new(terminal, notify_rx);
 
-        if let Event::Key(key) = event::read()? {
-            if key.kind == KeyEventKind::Press {
-                match key.code {
-                    KeyCode::Char('q') => return Ok(()),
-                    KeyCode::Char('r') => {
-                        let mut remove_popup = app.remove_popup.write().unwrap();
-                        *remove_popup = !*remove_popup;
-                    }
-                    KeyCode::Char('Y') => {
-                        if *app.remove_popup.read().unwrap() {
-                            let items = app.items.lock().unwrap();
-                            let selected_items = app.selected_items.clone();
-                            let remove_targets = items
-                                .iter()
-                                .filter(|it| selected_items.contains(&it.id.into()))
-                                .cloned()
-                                .collect_vec();
-                            let remove_popup = app.remove_popup.clone();
-                            std::thread::spawn(move || {
-                                for target in remove_targets {
-                                    // std::fs::remove_dir_all(target.project_path.join("target"))
-                                    //     .unwrap();
-                                    std::thread::sleep(std::time::Duration::from_millis(1000));
-                                }
-                                *remove_popup.write().unwrap() = false;
-                            });
+    loop {
+        tui.draw(|f| ui(f, &mut app))?;
+
+        match tui.read_event()? {
+            Event::AsyncUpdate => {}
+            Event::Parent(ev) => {
+                if let CrosstermEvent::Key(key) = ev {
+                    match key.code {
+                        KeyCode::Char('q') => return Ok(()),
+                        KeyCode::Char('r') => {
+                            let mut remove_popup = app.remove_popup.write();
+                            *remove_popup = !*remove_popup;
                         }
-                    }
-                    KeyCode::Down => app.next(),
-                    KeyCode::Up => app.previous(),
-                    KeyCode::Char(' ') => {
-                        if let Some(selected) = app.state.selected() {
-                            if app.selected_items.contains(&selected) {
-                                app.selected_items.remove(&selected);
-                                app.state
-                                    .remove_row_state(selected, RowHighlight::UserHighlight0)
-                            } else {
-                                app.selected_items.insert(selected);
-                                app.state
-                                    .add_row_state(selected, RowHighlight::UserHighlight0)
+                        KeyCode::Char('Y') => {
+                            if *app.remove_popup.read() {
+                                let items = app.items.read();
+                                let selected_items = app.selected_items.clone();
+                                let remove_targets = items
+                                    .iter()
+                                    .filter(|it| selected_items.contains(&it.id.into()))
+                                    .cloned()
+                                    .collect_vec();
+                                let remove_popup = app.remove_popup.clone();
+                                std::thread::spawn(move || {
+                                    for target in remove_targets {
+                                        // std::fs::remove_dir_all(target.project_path.join("target"))
+                                        //     .unwrap();
+                                        std::thread::sleep(std::time::Duration::from_millis(1000));
+                                    }
+                                    *remove_popup.write() = false;
+                                });
                             }
                         }
+                        KeyCode::Down => app.next(),
+                        KeyCode::Up => app.previous(),
+                        KeyCode::Char(' ') => {
+                            if let Some(selected) = app.state.selected() {
+                                let selected_id = app.items.read()[selected].id;
+                                if app.selected_items.contains(&selected_id) {
+                                    app.selected_items.remove(&selected_id);
+                                } else {
+                                    app.selected_items.insert(selected_id);
+                                }
+                            }
+                        }
+                        _ => {}
                     }
-                    _ => {}
                 }
             }
         }
@@ -248,35 +228,38 @@ fn ui(f: &mut Frame, app: &mut App) {
         .split(f.size());
 
     let selected_style = Style::default().add_modifier(Modifier::REVERSED);
-    let header = Row::new(Uuid::new_v4().into(), ProjectTargetAnalysis::header());
-    let items = app.items.lock().unwrap();
+    let header = Row::new(ProjectTargetAnalysis::header());
+    let items = app.items.read();
     let rows = items.iter().map(|item| {
         let cells = item.cells();
-        Row::new(item.id.into(), cells).height(1).bottom_margin(0)
+        let row = Row::new(cells).height(1).bottom_margin(0);
+        if app.selected_items.contains(&item.id.into()) {
+            row.style(Style::default().bg(Color::Yellow))
+        } else {
+            row
+        }
     });
-    let t =
-        MultiHighlightTable::new(rows)
-            .header(header)
-            .block(Block::default().borders(Borders::ALL).title(
-                if *app.is_loading.lock().unwrap() {
+    let t = Table::new(rows)
+        .header(header)
+        .block(
+            Block::default()
+                .borders(Borders::ALL)
+                .title(if *app.is_loading.read() {
                     "Now loading crates "
                 } else {
                     "Finished loading"
-                },
-            ))
-            .add_highlight(
-                RowHighlight::UserHighlight0,
-                Highlight::default().style(Style::default().bg(Color::Yellow)),
-            )
-            .selected_highlight(Highlight::default().style(selected_style).symbol(">> "))
-            .widths(&[
-                Constraint::Percentage(50),
-                Constraint::Max(30),
-                Constraint::Max(10),
-            ]);
+                }),
+        )
+        .highlight_style(selected_style)
+        .highlight_symbol(">> ")
+        .widths(&[
+            Constraint::Percentage(50),
+            Constraint::Max(30),
+            Constraint::Max(10),
+        ]);
     f.render_stateful_widget(t, rects[0], &mut app.state);
 
-    if *app.remove_popup.read().unwrap() {
+    if *app.remove_popup.read() {
         let size = f.size();
         let block = Block::default().borders(Borders::ALL);
         let area = centered_rect(60, 40, size);
