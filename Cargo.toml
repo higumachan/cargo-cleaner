@@ -1,0 +1,29 @@
+[package]
+name = "cargo-cleaner"
+version = "0.1.0"
+edition = "2021"
+
+# See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
+
+[workspace]
+members = [
+    "crates/ratatui-multi-highlight-table"
+]
+
+[workspace.dependencies]
+ratatui = { version = "0.24.1-alpha.6", features = ["all-widgets", "unstable-segment-size"] }
+uuid = { version = "1.6.1", features = ["serde", "v4", "fast-rng"] }
+
+
+[dependencies]
+crossterm = "0.27.0"
+ratatui.workspace = true
+num_threads = { version = "0.1.6", features = [] }
+num_cpus = "1.16.0"
+crossbeam-channel = { version = "0.5.8", features = [] }
+dirs = { version = "5.0.1", features = [] }
+cargo_toml = "0.17.1"
+anyhow = { version = "1.0.75", features = ["backtrace"] }
+uuid.workspace = true
+ratatui-multi-highlight-table = { path = "crates/ratatui-multi-highlight-table" }
+itertools = "0.12.0"
