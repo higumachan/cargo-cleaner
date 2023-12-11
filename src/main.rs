@@ -9,17 +9,13 @@ use cargo_cleaner::notify_rw_lock::NotifyRwLock;
 use cargo_cleaner::tui::{Event, Tui};
 use cargo_cleaner::{find_cargo_projects, Progress, ProjectTargetAnalysis};
 use crossterm::{
-    event::{
-        self, DisableMouseCapture, EnableMouseCapture, Event as CrosstermEvent, KeyCode,
-        KeyEventKind,
-    },
+    event::{DisableMouseCapture, EnableMouseCapture, Event as CrosstermEvent, KeyCode},
     execute,
     terminal::{disable_raw_mode, enable_raw_mode, EnterAlternateScreen, LeaveAlternateScreen},
 };
 use dirs::home_dir;
 use itertools::Itertools;
 use ratatui::prelude::*;
-use ratatui::widgets::GraphType::Line;
 use ratatui::widgets::*;
 use uuid::Uuid;
 
@@ -44,13 +40,8 @@ impl TableRow for ProjectTargetAnalysis {
     fn cells(&self) -> [Cell; COLUMNS] {
         [
             Cell::from(self.project_path.to_str().unwrap()).style(Style::default()),
-            Cell::from(
-                self.project_name
-                    .as_ref()
-                    .map(|name| name.as_str())
-                    .unwrap_or("NOT FOUND NAME"),
-            )
-            .style(Style::default()),
+            Cell::from(self.project_name.as_deref().unwrap_or("NOT FOUND NAME"))
+                .style(Style::default()),
             Cell::from(format!(
                 "{:.2}GiB",
                 self.size as f64 / (1024.0 * 1024.0 * 1024.0)
@@ -75,7 +66,6 @@ struct App {
     state: TableState,
     items: Arc<NotifyRwLock<Vec<ProjectTargetAnalysis>>>,
     selected_items: HashSet<Uuid>,
-    is_scanning: Arc<NotifyRwLock<bool>>,
     scan_progress: Arc<NotifyRwLock<Progress>>,
     delete_state: Option<DeleteState>,
     dry_run: bool,
@@ -94,7 +84,6 @@ impl App {
             state: TableState::default(),
             items: Arc::new(NotifyRwLock::new(notify_tx.clone(), vec![])),
             selected_items: HashSet::new(),
-            is_scanning: Arc::new(NotifyRwLock::new(notify_tx.clone(), true)),
             scan_progress,
             delete_state: None,
             mode: CursorMode::Normal,
@@ -152,7 +141,7 @@ fn main() -> Result<(), Box<dyn Error>> {
     let search_root = args
         .search_root
         .as_ref()
-        .map(|it| PathBuf::from(it))
+        .map(PathBuf::from)
         .unwrap_or_else(|| home_dir().expect("can not found HOME_DIR"));
 
     let scan_workers = args.scan_workers.unwrap_or((num_cpus::get() - 1).max(1));
@@ -206,6 +195,7 @@ fn main() -> Result<(), Box<dyn Error>> {
     Ok(())
 }
 
+#[allow(clippy::single_match)]
 fn run_app(
     terminal: &mut Terminal<CrosstermBackend<io::Stdout>>,
     mut app: App,
@@ -230,9 +220,9 @@ fn run_app(
                                     let progress = delete_progress.read();
                                     if progress.scanned == progress.total {
                                         // 削除が終わっていたら、ポップアップを閉じることができる
-                                        app.items.write().retain(|it| {
-                                            !app.selected_items.contains(&it.id.into())
-                                        });
+                                        app.items
+                                            .write()
+                                            .retain(|it| !app.selected_items.contains(&it.id));
                                         app.selected_items.clear();
                                         is_reset = true;
                                     }
@@ -252,7 +242,7 @@ fn run_app(
                                 let selected_items = app.selected_items.clone();
                                 let remove_targets = items
                                     .iter()
-                                    .filter(|it| selected_items.contains(&it.id.into()))
+                                    .filter(|it| selected_items.contains(&it.id))
                                     .cloned()
                                     .collect_vec();
 
@@ -290,11 +280,11 @@ fn run_app(
                                 app.delete_state = None;
                             }
                         }
-                        (KeyCode::Char('j') | KeyCode::Down) => {
+                        KeyCode::Char('j') | KeyCode::Down => {
                             app.next();
                             after_move(&mut app);
                         }
-                        (KeyCode::Char('k') | KeyCode::Up) => {
+                        KeyCode::Char('k') | KeyCode::Up => {
                             app.previous();
                             after_move(&mut app);
                         }
@@ -365,7 +355,7 @@ fn ui(f: &mut Frame, app: &mut App) {
         let rows = items.iter().map(|item| {
             let cells = item.cells();
             let row = Row::new(cells).height(1).bottom_margin(0);
-            if app.selected_items.contains(&item.id.into()) {
+            if app.selected_items.contains(&item.id) {
                 row.style(Style::default().fg(Color::Blue).bg(Color::Yellow))
             } else {
                 row.style(Style::default().fg(Color::Green))
@@ -437,7 +427,7 @@ fn delete_popup(f: &mut Frame, app: &mut App) {
         let block = Block::default().borders(Borders::ALL);
         let area = centered_rect(60, 30, size);
         f.render_widget(Clear, area); //this clears out the background
-        let mut gauge = Gauge::default()
+        let gauge = Gauge::default()
             .block(block)
             .gauge_style(Style::new().light_blue().on_black())
             .red();
@@ -453,7 +443,7 @@ fn delete_popup(f: &mut Frame, app: &mut App) {
             DeleteState::Deleting(progress) => {
                 let progress = progress.read();
                 gauge
-                    .percent(progress_percent(&&&&&&&&&progress))
+                    .percent(progress_percent(&progress))
                     .label(Span::styled(
                         delete_progress_text(&progress, app.dry_run),
                         Style::default().fg(Color::Yellow),
@@ -479,7 +469,7 @@ fn status_bar(f: &mut Frame, app: &mut App, rect: Rect) {
         items.iter().map(|it| it.size).sum::<u64>() as f64 / (1024.0 * 1024.0 * 1024.0);
     let selected_gib_size = items
         .iter()
-        .filter(|it| app.selected_items.contains(&it.id.into()))
+        .filter(|it| app.selected_items.contains(&it.id))
         .map(|it| it.size)
         .sum::<u64>() as f64
         / (1024.0 * 1024.0 * 1024.0);

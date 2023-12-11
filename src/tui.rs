@@ -1,7 +1,7 @@
 use crossterm::event;
 use crossterm::event::Event as CrosstermEvent;
 use ratatui::prelude::CrosstermBackend;
-use std::sync::mpsc::{Receiver, Sender};
+use std::sync::mpsc::Receiver;
 use std::time::Duration;
 
 #[derive(Clone, Debug)]
@@ -35,9 +35,8 @@ impl<'a> Tui<'a> {
         loop {
             if event::poll(Duration::from_micros(100))? {
                 return Ok(event::read().map(Event::Parent)?);
-            } else if let Ok(_) = self.async_update_rx.try_recv() {
+            } else if self.async_update_rx.try_recv().is_ok() {
                 return Ok(Event::AsyncUpdate);
-            } else {
             }
         }
     }

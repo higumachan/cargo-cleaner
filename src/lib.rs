@@ -5,7 +5,6 @@ use crate::notify_rw_lock::{NotifyRwLock, NotifySender};
 use cargo_toml::Manifest;
 use crossbeam_channel::{unbounded, Receiver, Sender};
 use std::path::{Path, PathBuf};
-use std::sync::mpsc::sync_channel;
 use std::sync::Arc;
 use std::time::SystemTime;
 use uuid::Uuid;
@@ -13,9 +12,6 @@ use uuid::Uuid;
 /// Job for the threaded project finder. First the path to be searched, second the sender to create
 /// new jobs for recursively searching the dirs
 struct Job(PathBuf, Sender<Job>);
-
-/// Directory of the project and bool that is true if the target directory exists
-struct ProjectDir(PathBuf, bool);
 
 pub struct Progress {
     pub total: usize,
@@ -88,7 +84,6 @@ fn find_cargo_projects_task(
 ) {
     let path = job.0;
     let job_sender = job.1;
-    let mut has_target = false;
 
     let read_dir = match path.read_dir() {
         Ok(it) => it,
@@ -116,7 +111,6 @@ fn find_cargo_projects_task(
             // as there shouldn't be any target dirs in there. Even if there are valid target dirs,
             // they should probably not be deleted. See issue #2 (https://github.com/dnlmlr/cargo-clean-all/issues/2)
             ".git" | ".cargo" => (),
-            "target" if has_cargo_toml => has_target = true,
             // For directories queue a new job to search it with the threadpool
             _ => {
                 job_sender
@@ -152,7 +146,7 @@ pub struct ProjectTargetAnalysis {
 impl ProjectTargetAnalysis {
     /// Analyze a given project directories target directory
     pub fn analyze(path: &Path) -> anyhow::Result<Self> {
-        let (size, last_modified) = Self::recursive_scan_target(&path.join("target"));
+        let (size, last_modified) = Self::recursive_scan_target(path.join("target"));
         let cargo_manifest = Manifest::from_path(path.join("Cargo.toml"))?;
         Ok(Self {
             id: Uuid::new_v4(),

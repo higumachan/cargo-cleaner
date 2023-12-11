@@ -2,7 +2,6 @@ use atomic_wait::{wait, wake_all, wake_one};
 use std::cell::UnsafeCell;
 use std::ops::{Deref, DerefMut};
 use std::sync::atomic::{AtomicU32, Ordering};
-use std::time::Instant;
 
 const WRITE_LOCK_STATE: u32 = u32::MAX;
 const READ_LOCK_STEP: u32 = 2;
