@@ -1,10 +1,12 @@
 pub mod notify_rw_lock;
 pub mod tui;
 
+use crate::notify_rw_lock::{NotifyRwLock, NotifySender};
 use cargo_toml::Manifest;
 use crossbeam_channel::{unbounded, Receiver, Sender};
 use std::path::{Path, PathBuf};
 use std::sync::mpsc::sync_channel;
+use std::sync::Arc;
 use std::time::SystemTime;
 use uuid::Uuid;
 
@@ -15,50 +17,75 @@ struct Job(PathBuf, Sender<Job>);
 /// Directory of the project and bool that is true if the target directory exists
 struct ProjectDir(PathBuf, bool);
 
+pub struct Progress {
+    pub total: usize,
+    pub scanned: usize,
+}
+
 /// Recursively scan the given path for cargo projects using the specified number of threads.
 ///
 /// When the number of threads is 0, use as many threads as virtual CPU cores.
 pub fn find_cargo_projects(
     path: &Path,
     mut num_threads: usize,
+    notify_tx: NotifySender,
 ) -> (
     Receiver<anyhow::Result<ProjectTargetAnalysis>>,
-    std::sync::mpsc::Receiver<()>,
+    Arc<NotifyRwLock<Progress>>,
 ) {
+    let progress = Arc::new(NotifyRwLock::new(
+        notify_tx,
+        Progress {
+            total: 1, // 最初に入っているディレクトリは必ずスキャンする
+            scanned: 0,
+        },
+    ));
     if num_threads == 0 {
         num_threads = num_cpus::get();
     }
 
     let (result_tx, result_rx) = unbounded();
-    let (finiehd_tx, finiehd_rx) = sync_channel(1);
     let path = path.to_owned();
-    std::thread::spawn(move || {
-        std::thread::scope(move |scope| {
-            let (job_tx, job_rx) = unbounded();
+    std::thread::spawn({
+        let progress = progress.clone();
+        move || {
+            std::thread::scope(move |scope| {
+                let (job_tx, job_rx) = unbounded();
 
-            (0..num_threads)
-                .map(|_| (job_rx.clone(), result_tx.clone()))
-                .for_each(|(job_rx, result_tx)| {
-                    scope.spawn(move || {
-                        job_rx
-                            .into_iter()
-                            .for_each(|job| find_cargo_projects_task(job, result_tx.clone()))
+                (0..num_threads)
+                    .map(|_| (job_rx.clone(), result_tx.clone()))
+                    .for_each(|(job_rx, result_tx)| {
+                        scope.spawn({
+                            let progress = progress.clone();
+                            || {
+                                job_rx.into_iter().for_each(move |job| {
+                                    find_cargo_projects_task(
+                                        job,
+                                        result_tx.clone(),
+                                        progress.clone(),
+                                    )
+                                })
+                            }
+                        });
                     });
-                });
 
-            job_tx.clone().send(Job(path, job_tx)).unwrap();
-        });
-        finiehd_tx.send(()).unwrap();
+                job_tx.clone().send(Job(path, job_tx)).unwrap();
+            });
+        }
     });
 
-    (result_rx, finiehd_rx)
+    (result_rx, progress)
 }
 
 /// Scan the given directory and report to the results Sender if the directory contains a
 /// Cargo.toml . Detected subdirectories should be queued as a new job in with the job_sender.
 ///
 /// This function is supposed to be called by the threadpool in find_cargo_projects
-fn find_cargo_projects_task(job: Job, results: Sender<anyhow::Result<ProjectTargetAnalysis>>) {
+fn find_cargo_projects_task(
+    job: Job,
+    results: Sender<anyhow::Result<ProjectTargetAnalysis>>,
+    progress: Arc<NotifyRwLock<Progress>>,
+) {
     let path = job.0;
     let job_sender = job.1;
     let mut has_target = false;
@@ -66,6 +93,7 @@ fn find_cargo_projects_task(job: Job, results: Sender<anyhow::Result<ProjectTarg
     let read_dir = match path.read_dir() {
         Ok(it) => it,
         Err(_e) => {
+            progress.write().scanned += 1;
             return;
         }
     };
@@ -90,9 +118,12 @@ fn find_cargo_projects_task(job: Job, results: Sender<anyhow::Result<ProjectTarg
             ".git" | ".cargo" => (),
             "target" if has_cargo_toml => has_target = true,
             // For directories queue a new job to search it with the threadpool
-            _ => job_sender
-                .send(Job(it.to_path_buf(), job_sender.clone()))
-                .unwrap(),
+            _ => {
+                job_sender
+                    .send(Job(it.to_path_buf(), job_sender.clone()))
+                    .unwrap();
+                progress.write().total += 1;
+            }
         }
     }
 
@@ -100,6 +131,7 @@ fn find_cargo_projects_task(job: Job, results: Sender<anyhow::Result<ProjectTarg
     if has_cargo_toml {
         results.send(ProjectTargetAnalysis::analyze(&path)).unwrap();
     }
+    progress.write().scanned += 1;
 }
 
 #[derive(Clone, Debug)]

@@ -7,7 +7,7 @@ use std::time::Instant;
 const WRITE_LOCK_STATE: u32 = u32::MAX;
 const READ_LOCK_STEP: u32 = 2;
 
-type NotifySender = std::sync::mpsc::SyncSender<()>;
+pub type NotifySender = std::sync::mpsc::SyncSender<()>;
 
 pub struct NotifyRwLock<T> {
     //2刻みでカウントアップされていく、リードロックのカウント

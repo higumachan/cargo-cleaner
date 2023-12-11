@@ -26,3 +26,4 @@ anyhow = { version = "1.0.75", features = ["backtrace"] }
 uuid.workspace = true
 itertools = "0.12.0"
 atomic-wait = "1.1.0"
+clap = { version = "4.4.11", features = ["derive"] }

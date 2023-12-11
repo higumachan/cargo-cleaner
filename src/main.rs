@@ -1,13 +1,14 @@
+use clap::Parser;
 use std::collections::HashSet;
-use std::path::Path;
+use std::path::{Path, PathBuf};
 use std::sync::atomic::AtomicBool;
 use std::sync::mpsc::SyncSender;
 use std::sync::{Arc, Mutex, RwLock};
 use std::{error::Error, io};
 
-use cargo_cleaner::notify_rw_lock::NotifyRwLock;
+use cargo_cleaner::notify_rw_lock::{NotifyRwLock, NotifySender};
 use cargo_cleaner::tui::{Event, Tui};
-use cargo_cleaner::{find_cargo_projects, ProjectTargetAnalysis};
+use cargo_cleaner::{find_cargo_projects, Progress, ProjectTargetAnalysis};
 use crossterm::{
     event::{
         self, DisableMouseCapture, EnableMouseCapture, Event as CrosstermEvent, KeyCode,
@@ -16,10 +17,13 @@ use crossterm::{
     execute,
     terminal::{disable_raw_mode, enable_raw_mode, EnterAlternateScreen, LeaveAlternateScreen},
 };
+use dirs::home_dir;
 use itertools::Itertools;
 use ratatui::prelude::*;
 use ratatui::widgets::*;
 use uuid::Uuid;
+
+const DELETE_COMMAND_KEY: char = 'd';
 
 const COLUMNS: usize = 3;
 
@@ -58,21 +62,33 @@ impl TableRow for ProjectTargetAnalysis {
 }
 
 struct App {
-    remove_popup: Arc<NotifyRwLock<bool>>,
     state: TableState,
     items: Arc<NotifyRwLock<Vec<ProjectTargetAnalysis>>>,
     selected_items: HashSet<Uuid>,
     is_loading: Arc<NotifyRwLock<bool>>,
+    load_progress: Arc<NotifyRwLock<Progress>>,
+    delete_progress: Arc<NotifyRwLock<Option<Progress>>>,
+    remove_popup: bool,
+    dry_run: bool,
+    notify_tx: SyncSender<()>,
 }
 
 impl App {
-    fn new(notify_tx: SyncSender<()>) -> App {
+    fn new(
+        dry_run: bool,
+        notify_tx: SyncSender<()>,
+        load_progress: Arc<NotifyRwLock<Progress>>,
+    ) -> App {
         App {
-            remove_popup: Arc::new(NotifyRwLock::new(notify_tx.clone(), false)),
             state: TableState::default(),
             items: Arc::new(NotifyRwLock::new(notify_tx.clone(), vec![])),
             selected_items: HashSet::new(),
             is_loading: Arc::new(NotifyRwLock::new(notify_tx.clone(), true)),
+            load_progress,
+            delete_progress: Arc::new(NotifyRwLock::new(notify_tx.clone(), None)),
+            remove_popup: false,
+            dry_run,
+            notify_tx,
         }
     }
     pub fn next(&mut self) {
@@ -104,9 +120,29 @@ impl App {
     }
 }
 
+#[derive(Parser, Debug)]
+#[command(author, version, about)]
+struct Args {
+    #[arg(long, default_value = "false")]
+    dry_run: bool,
+    #[arg(short = 'r', long)]
+    search_root: Option<String>,
+}
+
 fn main() -> Result<(), Box<dyn Error>> {
+    let args = Args::parse();
+
     // start find job
-    let (analysis_receiver, finish_receiver) = find_cargo_projects(&Path::new("/Users/yuta"), 8);
+    let (notify_tx, notify_rx) = std::sync::mpsc::sync_channel(1);
+
+    let search_root = args
+        .search_root
+        .as_ref()
+        .map(|it| PathBuf::from(it))
+        .unwrap_or_else(|| home_dir().expect("can not found HOME_DIR"));
+
+    let (analysis_receiver, load_progress) =
+        find_cargo_projects(search_root.as_path(), 8, notify_tx.clone());
 
     // setup terminal
     enable_raw_mode()?;
@@ -116,8 +152,7 @@ fn main() -> Result<(), Box<dyn Error>> {
     let mut terminal = Terminal::new(backend)?;
 
     // create app and run it
-    let (notify_tx, notify_rx) = std::sync::mpsc::sync_channel(1);
-    let app = App::new(notify_tx);
+    let app = App::new(args.dry_run, notify_tx, load_progress.clone());
     let items = Arc::clone(&app.items);
 
     std::thread::spawn(move || {
@@ -138,12 +173,6 @@ fn main() -> Result<(), Box<dyn Error>> {
             }
         }
     });
-    let is_loading = app.is_loading.clone();
-    std::thread::spawn(move || {
-        finish_receiver.recv().unwrap();
-        *is_loading.write() = false;
-    });
-
     let res = run_app(&mut terminal, app, notify_rx);
 
     // restore terminal
@@ -178,12 +207,23 @@ fn run_app(
                 if let CrosstermEvent::Key(key) = ev {
                     match key.code {
                         KeyCode::Char('q') => return Ok(()),
-                        KeyCode::Char('r') => {
-                            let mut remove_popup = app.remove_popup.write();
-                            *remove_popup = !*remove_popup;
+                        KeyCode::Char(DELETE_COMMAND_KEY) => {
+                            if !app.remove_popup {
+                                // ポップアップが閉じていれば、ポップアップを開く
+                                app.remove_popup = true;
+                            } else if let Some(progress) = app.delete_progress.read().as_ref() {
+                                if progress.scanned == progress.total {
+                                    // 削除が終わっていたら、ポップアップを閉じることができる
+                                    app.items
+                                        .write()
+                                        .retain(|it| !app.selected_items.contains(&it.id.into()));
+                                    app.selected_items.clear();
+                                    app.remove_popup = false;
+                                }
+                            }
                         }
                         KeyCode::Char('Y') => {
-                            if *app.remove_popup.read() {
+                            if app.remove_popup {
                                 let items = app.items.read();
                                 let selected_items = app.selected_items.clone();
                                 let remove_targets = items
@@ -191,14 +231,25 @@ fn run_app(
                                     .filter(|it| selected_items.contains(&it.id.into()))
                                     .cloned()
                                     .collect_vec();
-                                let remove_popup = app.remove_popup.clone();
+                                let delete_progress = app.delete_progress.clone();
                                 std::thread::spawn(move || {
+                                    *delete_progress.write() = Some(Progress {
+                                        total: remove_targets.len(),
+                                        scanned: 0,
+                                    });
                                     for target in remove_targets {
-                                        // std::fs::remove_dir_all(target.project_path.join("target"))
-                                        //     .unwrap();
-                                        std::thread::sleep(std::time::Duration::from_millis(1000));
+                                        if app.dry_run {
+                                            std::thread::sleep(std::time::Duration::from_millis(
+                                                100,
+                                            ));
+                                        } else {
+                                            std::fs::remove_dir_all(
+                                                target.project_path.join("target"),
+                                            )
+                                            .unwrap();
+                                        }
+                                        delete_progress.write().as_mut().unwrap().scanned += 1;
                                     }
-                                    *remove_popup.write() = false;
                                 });
                             }
                         }
@@ -224,7 +275,8 @@ fn run_app(
 
 fn ui(f: &mut Frame, app: &mut App) {
     let rects = Layout::default()
-        .constraints([Constraint::Percentage(100)])
+        .direction(Direction::Vertical)
+        .constraints([Constraint::Max(1), Constraint::Min(0)])
         .split(f.size());
 
     let selected_style = Style::default().add_modifier(Modifier::REVERSED);
@@ -257,19 +309,44 @@ fn ui(f: &mut Frame, app: &mut App) {
             Constraint::Max(30),
             Constraint::Max(10),
         ]);
-    f.render_stateful_widget(t, rects[0], &mut app.state);
+    f.render_stateful_widget(t, rects[1], &mut app.state);
 
-    if *app.remove_popup.read() {
+    let load_progress = app.load_progress.read();
+    let gauge = Gauge::default()
+        .block(Block::default())
+        .gauge_style(Style::new().light_green().on_gray())
+        .percent(progress_percent(&load_progress))
+        .label(Span::styled(
+            progress_text(&load_progress),
+            Style::default().fg(Color::Black),
+        ));
+
+    f.render_widget(gauge, rects[0]);
+
+    if app.remove_popup {
         let size = f.size();
         let block = Block::default().borders(Borders::ALL);
-        let area = centered_rect(60, 40, size);
+        let area = centered_rect(60, 30, size);
         f.render_widget(Clear, area); //this clears out the background
+        let progress = app.delete_progress.read();
         f.render_widget(
-            Paragraph::new(
-                "Are you sure you want to delete the target directory for these crates? (Y/n)",
-            )
-            .alignment(Alignment::Center)
-            .block(block),
+            Gauge::default()
+                .gauge_style(Style::new().light_blue().on_black())
+                .red()
+                .percent(progress.as_ref().map(|p| progress_percent(p)).unwrap_or(0))
+                .label(Span::styled(
+                    if let Some(progress) = progress.as_ref() {
+                        delete_progress_text(progress, app.dry_run)
+                    } else {
+                        format!(
+                            "Are you sure you want to delete the target directory for {} crates? (Y/n)",
+                            app.selected_items.len()
+                        )
+                    },
+
+                    Style::default().fg(Color::Yellow),
+                ))
+                .block(block),
             area,
         );
     }
@@ -293,4 +370,36 @@ fn centered_rect(percent_x: u16, percent_y: u16, r: Rect) -> Rect {
             Constraint::Percentage((100 - percent_x) / 2),
         ])
         .split(popup_layout[1])[1]
+}
+
+fn progress_percent(progress: &Progress) -> u16 {
+    let total = progress.total;
+    let scanned = progress.scanned;
+    if total == 0 {
+        0
+    } else {
+        (scanned as f64 / total as f64 * 100.0) as u16
+    }
+}
+
+fn progress_text(progress: &Progress) -> String {
+    if progress.scanned == progress.total {
+        "Finished".to_string()
+    } else {
+        format!("Loading {:6} / {:6}", progress.scanned, progress.total)
+    }
+}
+
+fn delete_progress_text(progress: &Progress, dry_run: bool) -> String {
+    if progress.scanned == progress.total {
+        format!("Finished Please Push '{}'", DELETE_COMMAND_KEY)
+    } else {
+        // format!("Deleting {:6} / {:6}", progress.scanned, progress.total)
+        format!(
+            "Deleting {:6} / {:6} {}",
+            progress.scanned,
+            progress.total,
+            if dry_run { "(dry-run)" } else { "" }
+        )
+    }
 }
