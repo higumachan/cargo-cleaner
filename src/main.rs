@@ -331,49 +331,60 @@ fn after_move(app: &mut App) {
 }
 
 fn ui(f: &mut Frame, app: &mut App) {
+    let height = f.size().height;
     let rects = Layout::default()
         .direction(Direction::Vertical)
-        .constraints([Constraint::Max(1), Constraint::Min(0)])
+        .constraints([
+            Constraint::Max(1),
+            Constraint::Max(height - 2),
+            Constraint::Max(1),
+        ])
         .split(f.size());
 
-    let selected_style = Style::default().add_modifier(Modifier::REVERSED);
-    let header = Row::new(ProjectTargetAnalysis::header());
-    let items = app.items.read();
-    let rows = items.iter().map(|item| {
-        let cells = item.cells();
-        let row = Row::new(cells).height(1).bottom_margin(0);
-        if app.selected_items.contains(&item.id.into()) {
-            row.style(Style::default().fg(Color::Blue).bg(Color::Yellow))
-        } else {
-            row.style(Style::default().fg(Color::Green))
-        }
-    });
-    let t = Table::new(rows)
-        .header(header)
-        .block(Block::default().borders(Borders::ALL).title(format!(
-            "Cargo Cleaner {}",
-            if app.dry_run { "(dry-run)" } else { "" }
-        )))
-        .highlight_style(selected_style)
-        .highlight_symbol(">> ")
-        .widths(&[
-            Constraint::Percentage(50),
-            Constraint::Max(30),
-            Constraint::Max(10),
-        ]);
-    f.render_stateful_widget(t, rects[1], &mut app.state);
+    {
+        let selected_style = Style::default().add_modifier(Modifier::REVERSED);
+        let header = Row::new(ProjectTargetAnalysis::header());
+        let items = app.items.read();
+        let rows = items.iter().map(|item| {
+            let cells = item.cells();
+            let row = Row::new(cells).height(1).bottom_margin(0);
+            if app.selected_items.contains(&item.id.into()) {
+                row.style(Style::default().fg(Color::Blue).bg(Color::Yellow))
+            } else {
+                row.style(Style::default().fg(Color::Green))
+            }
+        });
+        let t = Table::new(rows)
+            .header(header)
+            .block(Block::default().borders(Borders::ALL).title(format!(
+                "Cargo Cleaner {}",
+                if app.dry_run { "(dry-run)" } else { "" }
+            )))
+            .highlight_style(selected_style)
+            .highlight_symbol(">> ")
+            .widths(&[
+                Constraint::Percentage(50),
+                Constraint::Max(30),
+                Constraint::Max(10),
+            ]);
+        f.render_stateful_widget(t, rects[1], &mut app.state);
+    }
 
-    let scan_progress = app.scan_progress.read();
-    let gauge = Gauge::default()
-        .block(Block::default())
-        .gauge_style(Style::new().light_green().on_gray())
-        .percent(progress_percent(&scan_progress))
-        .label(Span::styled(
-            progress_text(&scan_progress),
-            Style::default().fg(Color::Black),
-        ));
+    {
+        let scan_progress = app.scan_progress.read();
+        let gauge = Gauge::default()
+            .block(Block::default())
+            .gauge_style(Style::new().light_green().on_gray())
+            .percent(progress_percent(&scan_progress))
+            .label(Span::styled(
+                progress_text(&scan_progress),
+                Style::default().fg(Color::Black),
+            ));
 
-    f.render_widget(gauge, rects[0]);
+        f.render_widget(gauge, rects[0]);
+    }
+
+    status_bar(f, app, rects[2]);
 
     if let Some(delete_state) = &app.delete_state {
         let size = f.size();
@@ -406,6 +417,42 @@ fn ui(f: &mut Frame, app: &mut App) {
 
         f.render_widget(gauge, area);
     }
+}
+
+fn status_bar(f: &mut Frame, app: &mut App, rect: Rect) {
+    let rects = Layout::default()
+        .direction(Direction::Horizontal)
+        .constraints([Constraint::Percentage(70), Constraint::Min(10)])
+        .split(rect);
+    let items = app.items.read();
+    let total_gib_size =
+        items.iter().map(|it| it.size).sum::<u64>() as f64 / (1024.0 * 1024.0 * 1024.0);
+    let selected_gib_size = items
+        .iter()
+        .filter(|it| app.selected_items.contains(&it.id.into()))
+        .map(|it| it.size)
+        .sum::<u64>() as f64
+        / (1024.0 * 1024.0 * 1024.0);
+
+    let status_text = format!(
+        "Total: {:.2} GiB, Selected: {:.2} GiB",
+        total_gib_size, selected_gib_size
+    );
+    let text = Span::styled(status_text, Style::default().fg(Color::Green));
+    let block = Block::default();
+    let paragraph = Paragraph::new(text).block(block);
+    f.render_widget(paragraph, rects[0]);
+
+    let mode_text = match app.mode {
+        CursorMode::Normal => "Normal",
+        CursorMode::Visual => "Visual",
+    };
+    let text = Span::styled(mode_text, Style::default().fg(Color::White).bg(Color::Blue));
+    let block = Block::default();
+    let paragraph = Paragraph::new(text)
+        .block(block)
+        .alignment(Alignment::Right);
+    f.render_widget(paragraph, rects[1]);
 }
 
 fn centered_rect(percent_x: u16, percent_y: u16, r: Rect) -> Rect {
