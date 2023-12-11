@@ -211,14 +211,19 @@ fn run_app(
                             if !app.remove_popup {
                                 // ポップアップが閉じていれば、ポップアップを開く
                                 app.remove_popup = true;
-                            } else if let Some(progress) = app.delete_progress.read().as_ref() {
-                                if progress.scanned == progress.total {
-                                    // 削除が終わっていたら、ポップアップを閉じることができる
-                                    app.items
-                                        .write()
-                                        .retain(|it| !app.selected_items.contains(&it.id.into()));
-                                    app.selected_items.clear();
-                                    app.remove_popup = false;
+                            } else {
+                                let delete_progress = app.delete_progress.read();
+                                if let Some(progress) = delete_progress.as_ref() {
+                                    if progress.scanned == progress.total {
+                                        // 削除が終わっていたら、ポップアップを閉じることができる
+                                        app.items.write().retain(|it| {
+                                            !app.selected_items.contains(&it.id.into())
+                                        });
+                                        app.selected_items.clear();
+                                        app.remove_popup = false;
+                                        drop(delete_progress);
+                                        let _ = app.delete_progress.write().take();
+                                    }
                                 }
                             }
                         }
@@ -240,7 +245,7 @@ fn run_app(
                                     for target in remove_targets {
                                         if app.dry_run {
                                             std::thread::sleep(std::time::Duration::from_millis(
-                                                100,
+                                                1000,
                                             ));
                                         } else {
                                             std::fs::remove_dir_all(
