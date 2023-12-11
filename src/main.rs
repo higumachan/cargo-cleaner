@@ -405,13 +405,14 @@ fn ui(f: &mut Frame, app: &mut App) {
 
     if app.show_help_popup {
         let text = Text::styled(
-            "h     : toggle help\n\
-             j or ↓: move down\n\
-             k or ↑: move up\n\
-             v     : into select mode\n\
-             V     : into unselect mode\n\
-             d     : open delete window\n\
-             q     : quit",
+            "h      : toggle help\n\
+             j or ↓ : move down\n\
+             k or ↑ : move up\n\
+             space  : toggle select\n\
+             v      : into select mode\n\
+             V      : into unselect mode\n\
+             d      : open delete window\n\
+             q      : quit",
             Style::default().fg(Color::Yellow),
         );
 
