@@ -1,12 +1,11 @@
 use clap::Parser;
 use std::collections::HashSet;
-use std::path::{Path, PathBuf};
-use std::sync::atomic::AtomicBool;
+use std::path::PathBuf;
 use std::sync::mpsc::SyncSender;
-use std::sync::{Arc, Mutex, RwLock};
+use std::sync::Arc;
 use std::{error::Error, io};
 
-use cargo_cleaner::notify_rw_lock::{NotifyRwLock, NotifySender};
+use cargo_cleaner::notify_rw_lock::NotifyRwLock;
 use cargo_cleaner::tui::{Event, Tui};
 use cargo_cleaner::{find_cargo_projects, Progress, ProjectTargetAnalysis};
 use crossterm::{
@@ -43,20 +42,19 @@ impl TableRow for ProjectTargetAnalysis {
 
     fn cells(&self) -> [Cell; COLUMNS] {
         [
-            Cell::from(self.project_path.to_str().unwrap())
-                .style(Style::default().fg(Color::Green)),
+            Cell::from(self.project_path.to_str().unwrap()).style(Style::default()),
             Cell::from(
                 self.project_name
                     .as_ref()
                     .map(|name| name.as_str())
                     .unwrap_or("NOT FOUND NAME"),
             )
-            .style(Style::default().fg(Color::Green)),
+            .style(Style::default()),
             Cell::from(format!(
                 "{:.2}GiB",
                 self.size as f64 / (1024.0 * 1024.0 * 1024.0)
             ))
-            .style(Style::default().fg(Color::Green)),
+            .style(Style::default()),
         ]
     }
 }
@@ -66,14 +64,20 @@ pub enum DeleteState {
     Deleting(Arc<NotifyRwLock<Progress>>),
 }
 
+pub enum CursorMode {
+    Normal,
+    Visual,
+}
+
 struct App {
     state: TableState,
     items: Arc<NotifyRwLock<Vec<ProjectTargetAnalysis>>>,
     selected_items: HashSet<Uuid>,
-    is_loading: Arc<NotifyRwLock<bool>>,
-    load_progress: Arc<NotifyRwLock<Progress>>,
+    is_scanning: Arc<NotifyRwLock<bool>>,
+    scan_progress: Arc<NotifyRwLock<Progress>>,
     delete_state: Option<DeleteState>,
     dry_run: bool,
+    mode: CursorMode,
     notify_tx: SyncSender<()>,
 }
 
@@ -81,15 +85,16 @@ impl App {
     fn new(
         dry_run: bool,
         notify_tx: SyncSender<()>,
-        load_progress: Arc<NotifyRwLock<Progress>>,
+        scan_progress: Arc<NotifyRwLock<Progress>>,
     ) -> App {
         App {
             state: TableState::default(),
             items: Arc::new(NotifyRwLock::new(notify_tx.clone(), vec![])),
             selected_items: HashSet::new(),
-            is_loading: Arc::new(NotifyRwLock::new(notify_tx.clone(), true)),
-            load_progress,
+            is_scanning: Arc::new(NotifyRwLock::new(notify_tx.clone(), true)),
+            scan_progress,
             delete_state: None,
+            mode: CursorMode::Normal,
             dry_run,
             notify_tx,
         }
@@ -130,6 +135,8 @@ struct Args {
     dry_run: bool,
     #[arg(short = 'r', long)]
     search_root: Option<String>,
+    #[arg(short = 'p', long)]
+    scan_workers: Option<usize>,
 }
 
 fn main() -> Result<(), Box<dyn Error>> {
@@ -144,8 +151,9 @@ fn main() -> Result<(), Box<dyn Error>> {
         .map(|it| PathBuf::from(it))
         .unwrap_or_else(|| home_dir().expect("can not found HOME_DIR"));
 
-    let (analysis_receiver, load_progress) =
-        find_cargo_projects(search_root.as_path(), 8, notify_tx.clone());
+    let scan_workers = args.scan_workers.unwrap_or((num_cpus::get() - 1).max(1));
+    let (analysis_receiver, scan_progress) =
+        find_cargo_projects(search_root.as_path(), scan_workers, notify_tx.clone());
 
     // setup terminal
     enable_raw_mode()?;
@@ -155,7 +163,7 @@ fn main() -> Result<(), Box<dyn Error>> {
     let mut terminal = Terminal::new(backend)?;
 
     // create app and run it
-    let app = App::new(args.dry_run, notify_tx, load_progress.clone());
+    let app = App::new(args.dry_run, notify_tx, scan_progress.clone());
     let items = Arc::clone(&app.items);
 
     std::thread::spawn(move || {
@@ -243,6 +251,9 @@ fn run_app(
                                     .filter(|it| selected_items.contains(&it.id.into()))
                                     .cloned()
                                     .collect_vec();
+
+                                assert_eq!(remove_targets.len(), selected_items.len());
+
                                 let delete_progress = Arc::new(NotifyRwLock::new(
                                     app.notify_tx.clone(),
                                     Progress {
@@ -275,8 +286,14 @@ fn run_app(
                                 app.delete_state = None;
                             }
                         }
-                        (KeyCode::Char('j') | KeyCode::Down) => app.next(),
-                        (KeyCode::Char('k') | KeyCode::Up) => app.previous(),
+                        (KeyCode::Char('j') | KeyCode::Down) => {
+                            app.next();
+                            after_move(&mut app);
+                        }
+                        (KeyCode::Char('k') | KeyCode::Up) => {
+                            app.previous();
+                            after_move(&mut app);
+                        }
                         KeyCode::Char(' ') => {
                             if let Some(selected) = app.state.selected() {
                                 let selected_id = app.items.read()[selected].id;
@@ -287,9 +304,27 @@ fn run_app(
                                 }
                             }
                         }
+                        KeyCode::Char('v') => {
+                            app.mode = CursorMode::Visual;
+                        }
+                        KeyCode::Esc => {
+                            app.mode = CursorMode::Normal;
+                        }
                         _ => {}
                     }
                 }
+            }
+        }
+    }
+}
+
+fn after_move(app: &mut App) {
+    match app.mode {
+        CursorMode::Normal => {}
+        CursorMode::Visual => {
+            if let Some(selected) = app.state.selected() {
+                let selected_id = app.items.read()[selected].id;
+                app.selected_items.insert(selected_id);
             }
         }
     }
@@ -308,9 +343,9 @@ fn ui(f: &mut Frame, app: &mut App) {
         let cells = item.cells();
         let row = Row::new(cells).height(1).bottom_margin(0);
         if app.selected_items.contains(&item.id.into()) {
-            row.style(Style::default().bg(Color::Yellow))
+            row.style(Style::default().fg(Color::Blue).bg(Color::Yellow))
         } else {
-            row
+            row.style(Style::default().fg(Color::Green))
         }
     });
     let t = Table::new(rows)
@@ -328,13 +363,13 @@ fn ui(f: &mut Frame, app: &mut App) {
         ]);
     f.render_stateful_widget(t, rects[1], &mut app.state);
 
-    let load_progress = app.load_progress.read();
+    let scan_progress = app.scan_progress.read();
     let gauge = Gauge::default()
         .block(Block::default())
         .gauge_style(Style::new().light_green().on_gray())
-        .percent(progress_percent(&load_progress))
+        .percent(progress_percent(&scan_progress))
         .label(Span::styled(
-            progress_text(&load_progress),
+            progress_text(&scan_progress),
             Style::default().fg(Color::Black),
         ));
 
@@ -407,7 +442,7 @@ fn progress_text(progress: &Progress) -> String {
     if progress.scanned == progress.total {
         "Finished".to_string()
     } else {
-        format!("Loading {:6} / {:6}", progress.scanned, progress.total)
+        format!("Scanning {:6} / {:6}", progress.scanned, progress.total)
     }
 }
 
