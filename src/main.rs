@@ -61,14 +61,18 @@ impl TableRow for ProjectTargetAnalysis {
     }
 }
 
+pub enum DeleteState {
+    Confirm,
+    Deleting(Arc<NotifyRwLock<Progress>>),
+}
+
 struct App {
     state: TableState,
     items: Arc<NotifyRwLock<Vec<ProjectTargetAnalysis>>>,
     selected_items: HashSet<Uuid>,
     is_loading: Arc<NotifyRwLock<bool>>,
     load_progress: Arc<NotifyRwLock<Progress>>,
-    delete_progress: Arc<NotifyRwLock<Option<Progress>>>,
-    remove_popup: bool,
+    delete_state: Option<DeleteState>,
     dry_run: bool,
     notify_tx: SyncSender<()>,
 }
@@ -85,8 +89,7 @@ impl App {
             selected_items: HashSet::new(),
             is_loading: Arc::new(NotifyRwLock::new(notify_tx.clone(), true)),
             load_progress,
-            delete_progress: Arc::new(NotifyRwLock::new(notify_tx.clone(), None)),
-            remove_popup: false,
+            delete_state: None,
             dry_run,
             notify_tx,
         }
@@ -208,27 +211,31 @@ fn run_app(
                     match key.code {
                         KeyCode::Char('q') => return Ok(()),
                         KeyCode::Char(DELETE_COMMAND_KEY) => {
-                            if !app.remove_popup {
-                                // ポップアップが閉じていれば、ポップアップを開く
-                                app.remove_popup = true;
-                            } else {
-                                let delete_progress = app.delete_progress.read();
-                                if let Some(progress) = delete_progress.as_ref() {
+                            let mut is_reset = false;
+                            match &app.delete_state {
+                                Some(DeleteState::Confirm) => {}
+                                Some(DeleteState::Deleting(delete_progress)) => {
+                                    let progress = delete_progress.read();
                                     if progress.scanned == progress.total {
                                         // 削除が終わっていたら、ポップアップを閉じることができる
                                         app.items.write().retain(|it| {
                                             !app.selected_items.contains(&it.id.into())
                                         });
                                         app.selected_items.clear();
-                                        app.remove_popup = false;
-                                        drop(delete_progress);
-                                        let _ = app.delete_progress.write().take();
+                                        is_reset = true;
                                     }
                                 }
+                                None => {
+                                    // ポップアップが閉じていれば、ポップアップを開く
+                                    app.delete_state = Some(DeleteState::Confirm);
+                                }
+                            }
+                            if is_reset {
+                                app.delete_state = None;
                             }
                         }
-                        KeyCode::Char('Y') => {
-                            if app.remove_popup {
+                        KeyCode::Char('Y') => match app.delete_state {
+                            Some(DeleteState::Confirm) => {
                                 let items = app.items.read();
                                 let selected_items = app.selected_items.clone();
                                 let remove_targets = items
@@ -236,12 +243,16 @@ fn run_app(
                                     .filter(|it| selected_items.contains(&it.id.into()))
                                     .cloned()
                                     .collect_vec();
-                                let delete_progress = app.delete_progress.clone();
-                                std::thread::spawn(move || {
-                                    *delete_progress.write() = Some(Progress {
+                                let delete_progress = Arc::new(NotifyRwLock::new(
+                                    app.notify_tx.clone(),
+                                    Progress {
                                         total: remove_targets.len(),
                                         scanned: 0,
-                                    });
+                                    },
+                                ));
+                                app.delete_state =
+                                    Some(DeleteState::Deleting(delete_progress.clone()));
+                                std::thread::spawn(move || {
                                     for target in remove_targets {
                                         if app.dry_run {
                                             std::thread::sleep(std::time::Duration::from_millis(
@@ -253,13 +264,19 @@ fn run_app(
                                             )
                                             .unwrap();
                                         }
-                                        delete_progress.write().as_mut().unwrap().scanned += 1;
+                                        delete_progress.write().scanned += 1;
                                     }
                                 });
                             }
+                            _ => {}
+                        },
+                        KeyCode::Char('n') => {
+                            if let Some(DeleteState::Confirm) = app.delete_state {
+                                app.delete_state = None;
+                            }
                         }
-                        KeyCode::Down => app.next(),
-                        KeyCode::Up => app.previous(),
+                        (KeyCode::Char('j') | KeyCode::Down) => app.next(),
+                        (KeyCode::Char('k') | KeyCode::Up) => app.previous(),
                         KeyCode::Char(' ') => {
                             if let Some(selected) = app.state.selected() {
                                 let selected_id = app.items.read()[selected].id;
@@ -298,15 +315,10 @@ fn ui(f: &mut Frame, app: &mut App) {
     });
     let t = Table::new(rows)
         .header(header)
-        .block(
-            Block::default()
-                .borders(Borders::ALL)
-                .title(if *app.is_loading.read() {
-                    "Now loading crates "
-                } else {
-                    "Finished loading"
-                }),
-        )
+        .block(Block::default().borders(Borders::ALL).title(format!(
+            "Cargo Cleaner {}",
+            if app.dry_run { "(dry-run)" } else { "" }
+        )))
         .highlight_style(selected_style)
         .highlight_symbol(">> ")
         .widths(&[
@@ -328,32 +340,36 @@ fn ui(f: &mut Frame, app: &mut App) {
 
     f.render_widget(gauge, rects[0]);
 
-    if app.remove_popup {
+    if let Some(delete_state) = &app.delete_state {
         let size = f.size();
         let block = Block::default().borders(Borders::ALL);
         let area = centered_rect(60, 30, size);
         f.render_widget(Clear, area); //this clears out the background
-        let progress = app.delete_progress.read();
-        f.render_widget(
-            Gauge::default()
-                .gauge_style(Style::new().light_blue().on_black())
-                .red()
-                .percent(progress.as_ref().map(|p| progress_percent(p)).unwrap_or(0))
-                .label(Span::styled(
-                    if let Some(progress) = progress.as_ref() {
-                        delete_progress_text(progress, app.dry_run)
-                    } else {
-                        format!(
-                            "Are you sure you want to delete the target directory for {} crates? (Y/n)",
-                            app.selected_items.len()
-                        )
-                    },
+        let mut gauge = Gauge::default()
+            .block(block)
+            .gauge_style(Style::new().light_blue().on_black())
+            .red();
 
-                    Style::default().fg(Color::Yellow),
-                ))
-                .block(block),
-            area,
-        );
+        let gauge = match delete_state {
+            DeleteState::Confirm => gauge.percent(0).label(Span::styled(
+                format!(
+                    "Are you sure you want to delete the target directory for {} crates? (Y/n)",
+                    app.selected_items.len()
+                ),
+                Style::default().fg(Color::Yellow),
+            )),
+            DeleteState::Deleting(progress) => {
+                let progress = progress.read();
+                gauge
+                    .percent(progress_percent(&&&&&&&&&progress))
+                    .label(Span::styled(
+                        delete_progress_text(&progress, app.dry_run),
+                        Style::default().fg(Color::Yellow),
+                    ))
+            }
+        };
+
+        f.render_widget(gauge, area);
     }
 }
 
