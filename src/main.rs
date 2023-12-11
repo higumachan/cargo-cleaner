@@ -19,6 +19,7 @@ use crossterm::{
 use dirs::home_dir;
 use itertools::Itertools;
 use ratatui::prelude::*;
+use ratatui::widgets::GraphType::Line;
 use ratatui::widgets::*;
 use uuid::Uuid;
 
@@ -66,7 +67,8 @@ pub enum DeleteState {
 
 pub enum CursorMode {
     Normal,
-    Visual,
+    Select,
+    Unselect,
 }
 
 struct App {
@@ -78,6 +80,7 @@ struct App {
     delete_state: Option<DeleteState>,
     dry_run: bool,
     mode: CursorMode,
+    show_help_popup: bool,
     notify_tx: SyncSender<()>,
 }
 
@@ -95,6 +98,7 @@ impl App {
             scan_progress,
             delete_state: None,
             mode: CursorMode::Normal,
+            show_help_popup: false,
             dry_run,
             notify_tx,
         }
@@ -305,9 +309,16 @@ fn run_app(
                             }
                         }
                         KeyCode::Char('v') => {
-                            app.mode = CursorMode::Visual;
+                            app.mode = CursorMode::Select;
+                        }
+                        KeyCode::Char('V') => {
+                            app.mode = CursorMode::Unselect;
+                        }
+                        KeyCode::Char('h') => {
+                            app.show_help_popup = !app.show_help_popup;
                         }
                         KeyCode::Esc => {
+                            app.show_help_popup = false;
                             app.mode = CursorMode::Normal;
                         }
                         _ => {}
@@ -321,10 +332,16 @@ fn run_app(
 fn after_move(app: &mut App) {
     match app.mode {
         CursorMode::Normal => {}
-        CursorMode::Visual => {
+        CursorMode::Select => {
             if let Some(selected) = app.state.selected() {
                 let selected_id = app.items.read()[selected].id;
                 app.selected_items.insert(selected_id);
+            }
+        }
+        CursorMode::Unselect => {
+            if let Some(selected) = app.state.selected() {
+                let selected_id = app.items.read()[selected].id;
+                app.selected_items.remove(&selected_id);
             }
         }
     }
@@ -342,7 +359,7 @@ fn ui(f: &mut Frame, app: &mut App) {
         .split(f.size());
 
     {
-        let selected_style = Style::default().add_modifier(Modifier::REVERSED);
+        let selected_style = Style::default().fg(Color::White).bg(Color::Green);
         let header = Row::new(ProjectTargetAnalysis::header());
         let items = app.items.read();
         let rows = items.iter().map(|item| {
@@ -386,6 +403,34 @@ fn ui(f: &mut Frame, app: &mut App) {
 
     status_bar(f, app, rects[2]);
 
+    if app.show_help_popup {
+        let text = Text::styled(
+            "h     : toggle help\n\
+             j or ↓: move down\n\
+             k or ↑: move up\n\
+             v     : into select mode\n\
+             V     : into unselect mode\n\
+             d     : open delete window\n\
+             q     : quit",
+            Style::default().fg(Color::Yellow),
+        );
+
+        let width = text.width() + 2;
+        let height = text.height() + 2;
+
+        let size = f.size();
+        let area = sized_centered_rect(width as u16, height as u16, size);
+        f.render_widget(Clear, area); //this clears out the background
+
+        let block = Block::default().title("Help").borders(Borders::ALL);
+        let paragraph = Paragraph::new(text).block(block);
+        f.render_widget(paragraph, area);
+    }
+
+    delete_popup(f, app);
+}
+
+fn delete_popup(f: &mut Frame, app: &mut App) {
     if let Some(delete_state) = &app.delete_state {
         let size = f.size();
         let block = Block::default().borders(Borders::ALL);
@@ -422,7 +467,11 @@ fn ui(f: &mut Frame, app: &mut App) {
 fn status_bar(f: &mut Frame, app: &mut App, rect: Rect) {
     let rects = Layout::default()
         .direction(Direction::Horizontal)
-        .constraints([Constraint::Percentage(70), Constraint::Min(10)])
+        .constraints([
+            Constraint::Min(50),
+            Constraint::Min(20),
+            Constraint::Min(10),
+        ])
         .split(rect);
     let items = app.items.read();
     let total_gib_size =
@@ -443,16 +492,46 @@ fn status_bar(f: &mut Frame, app: &mut App, rect: Rect) {
     let paragraph = Paragraph::new(text).block(block);
     f.render_widget(paragraph, rects[0]);
 
+    let help_text = Span::styled("h: help", Style::default().fg(Color::Green));
+    let block = Block::default();
+    let paragraph = Paragraph::new(help_text).block(block);
+    f.render_widget(paragraph, rects[1]);
+
     let mode_text = match app.mode {
         CursorMode::Normal => "Normal",
-        CursorMode::Visual => "Visual",
+        CursorMode::Select => "Select",
+        CursorMode::Unselect => "Unselect",
     };
     let text = Span::styled(mode_text, Style::default().fg(Color::White).bg(Color::Blue));
     let block = Block::default();
     let paragraph = Paragraph::new(text)
         .block(block)
         .alignment(Alignment::Right);
-    f.render_widget(paragraph, rects[1]);
+    f.render_widget(paragraph, rects[2]);
+}
+
+fn sized_centered_rect(min_width: u16, min_height: u16, r: Rect) -> Rect {
+    let margin_side = (r.width - min_width) / 2;
+    let width = r.width - margin_side * 2;
+    let margin_top = (r.height - min_height) / 2;
+    let height = r.height - margin_top * 2;
+    let popup_layout = Layout::default()
+        .direction(Direction::Vertical)
+        .constraints([
+            Constraint::Max(margin_top),
+            Constraint::Max(height),
+            Constraint::Max(margin_top),
+        ])
+        .split(r);
+
+    Layout::default()
+        .direction(Direction::Horizontal)
+        .constraints([
+            Constraint::Max(margin_side),
+            Constraint::Max(width),
+            Constraint::Max(margin_side),
+        ])
+        .split(popup_layout[1])[1]
 }
 
 fn centered_rect(percent_x: u16, percent_y: u16, r: Rect) -> Rect {
