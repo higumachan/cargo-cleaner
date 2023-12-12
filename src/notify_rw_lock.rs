@@ -155,6 +155,7 @@ impl<T> DerefMut for WriteGuard<'_, T> {
 mod tests {
     use super::*;
     use std::hint::black_box;
+    use std::time::Instant;
 
     #[test]
     fn add_list() {
