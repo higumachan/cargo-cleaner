@@ -63,7 +63,7 @@ pub enum CursorMode {
 }
 
 struct App {
-    state: TableState,
+    table_state: TableState,
     items: Arc<NotifyRwLock<Vec<ProjectTargetAnalysis>>>,
     selected_items: HashSet<Uuid>,
     scan_progress: Arc<NotifyRwLock<Progress>>,
@@ -81,7 +81,7 @@ impl App {
         scan_progress: Arc<NotifyRwLock<Progress>>,
     ) -> App {
         App {
-            state: TableState::default(),
+            table_state: TableState::default(),
             items: Arc::new(NotifyRwLock::new(notify_tx.clone(), vec![])),
             selected_items: HashSet::new(),
             scan_progress,
@@ -93,7 +93,7 @@ impl App {
         }
     }
     pub fn next(&mut self) {
-        let i = match self.state.selected() {
+        let i = match self.table_state.selected() {
             Some(i) => {
                 if i >= self.items.read().len() - 1 {
                     i
@@ -103,11 +103,11 @@ impl App {
             }
             None => 0,
         };
-        self.state.select(Some(i));
+        self.table_state.select(Some(i));
     }
 
     pub fn previous(&mut self) {
-        let i = match self.state.selected() {
+        let i = match self.table_state.selected() {
             Some(i) => {
                 if i == 0 {
                     i
@@ -117,7 +117,7 @@ impl App {
             }
             None => 0,
         };
-        self.state.select(Some(i));
+        self.table_state.select(Some(i));
     }
 }
 
@@ -264,10 +264,9 @@ fn run_app(
                                                 1000,
                                             ));
                                         } else {
-                                            std::fs::remove_dir_all(
+                                            let _ = std::fs::remove_dir_all(
                                                 target.project_path.join("target"),
-                                            )
-                                            .unwrap();
+                                            );
                                         }
                                         delete_progress.write().scanned += 1;
                                     }
@@ -288,8 +287,19 @@ fn run_app(
                             app.previous();
                             after_move(&mut app);
                         }
+                        KeyCode::Char('g') => {
+                            app.table_state.select(Some(0));
+                            after_move(&mut app);
+                        }
+                        KeyCode::Char('G') => {
+                            {
+                                let items = app.items.read();
+                                app.table_state.select(Some(items.len() - 1));
+                            }
+                            after_move(&mut app);
+                        }
                         KeyCode::Char(' ') => {
-                            if let Some(selected) = app.state.selected() {
+                            if let Some(selected) = app.table_state.selected() {
                                 let selected_id = app.items.read()[selected].id;
                                 if app.selected_items.contains(&selected_id) {
                                     app.selected_items.remove(&selected_id);
@@ -323,13 +333,13 @@ fn after_move(app: &mut App) {
     match app.mode {
         CursorMode::Normal => {}
         CursorMode::Select => {
-            if let Some(selected) = app.state.selected() {
+            if let Some(selected) = app.table_state.selected() {
                 let selected_id = app.items.read()[selected].id;
                 app.selected_items.insert(selected_id);
             }
         }
         CursorMode::Unselect => {
-            if let Some(selected) = app.state.selected() {
+            if let Some(selected) = app.table_state.selected() {
                 let selected_id = app.items.read()[selected].id;
                 app.selected_items.remove(&selected_id);
             }
@@ -374,7 +384,7 @@ fn ui(f: &mut Frame, app: &mut App) {
                 Constraint::Max(30),
                 Constraint::Max(10),
             ]);
-        f.render_stateful_widget(t, rects[1], &mut app.state);
+        f.render_stateful_widget(t, rects[1], &mut app.table_state);
     }
 
     {
@@ -398,6 +408,8 @@ fn ui(f: &mut Frame, app: &mut App) {
             "h      : toggle help\n\
              j or ↓ : move down\n\
              k or ↑ : move up\n\
+             g      : move to top\n\
+             G      : move to bottom\n\
              space  : toggle select\n\
              v      : into select mode\n\
              V      : into unselect mode\n\
