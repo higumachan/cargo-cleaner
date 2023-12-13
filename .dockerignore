@@ -1,0 +1,7 @@
+/target
+/test-environment/Dockerfile
+README.ja.md
+README.md
+.dockerignore
+.git
+.gitignore
