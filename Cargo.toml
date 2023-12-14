@@ -2,28 +2,28 @@
 name = "cargo-cleaner"
 version = "0.1.0"
 edition = "2021"
+authors = ["Yuta Hinokuma <yuta.hinokuma725@gmail.com>"]
+license = "MIT"
+homepage = "https://github.com/higumachan/cargo-cleaner"
+repository = "https://github.com/higumachan/cargo-cleaner"
+exclude = ["test-environment/"]
+readme = "README.md"
+description = "A cross-platform TUI tool to clean up your cargo cache."
+categories = ["development-tools", "command-line-interface"]
 
 # See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
-
-[workspace]
-members = [
-]
-
-[workspace.dependencies]
-ratatui = { version = "0.24.0", features = ["all-widgets"] }
-uuid = { version = "1.6.1", features = ["serde", "v4", "fast-rng"] }
 
 
 [dependencies]
 crossterm = "0.27.0"
-ratatui.workspace = true
 num_threads = { version = "0.1.6", features = [] }
 num_cpus = "1.16.0"
 crossbeam-channel = { version = "0.5.8", features = [] }
 dirs = { version = "5.0.1", features = [] }
 cargo_toml = "0.17.1"
 anyhow = { version = "1.0.75", features = ["backtrace"] }
-uuid.workspace = true
 itertools = "0.12.0"
 atomic-wait = "1.1.0"
 clap = { version = "4.4.11", features = ["derive"] }
+ratatui = { version = "0.24.0", features = ["all-widgets"] }
+uuid = { version = "1.6.1", features = ["serde", "v4", "fast-rng"] }
