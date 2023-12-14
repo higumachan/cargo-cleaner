@@ -45,7 +45,7 @@ cargo cleaner
 cargo cleaner --dry-run
 ```
 
-dry-runを指定すると、実際に削除を行わずに、削除対象となるファイルを表示します。
+dry-runを指定すると、実際にファイルの削除を行わずに、cargo cleanerの挙動を確かめることができます。
 
 ## Specify the directory
 
