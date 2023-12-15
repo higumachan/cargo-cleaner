@@ -4,6 +4,8 @@
 
 TUI画面でcargo projectを選択して一括でtargetディレクトリの削除(cargo clean相当)を実行することができます。
 
+![デモ動画](assets/demo.gif)
+
 # インストール方法
 
 ## cargo install

@@ -4,6 +4,9 @@ Cargo Cleaner is a TUI tool inspired by [cargo-clean-all](https://crates.io/crat
 
 It enables you to select cargo projects on the TUI screen and perform bulk deletion of the target directory (equivalent to cargo clean).
 
+![demo](assets/demo.gif)
+
+
 # Installation Method
 
 ## cargo install
