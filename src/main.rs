@@ -121,7 +121,14 @@ impl App {
     }
 }
 
-#[derive(Parser, Debug)]
+#[derive(Parser)] // requires `derive` feature
+#[command(name = "cargo")]
+#[command(bin_name = "cargo")]
+enum CargoCli {
+    Cleaner(Args),
+}
+
+#[derive(clap::Args)]
 #[command(author, version, about)]
 struct Args {
     #[arg(long, default_value = "false")]
@@ -133,7 +140,7 @@ struct Args {
 }
 
 fn main() -> Result<(), Box<dyn Error>> {
-    let args = Args::parse();
+    let CargoCli::Cleaner(args) = CargoCli::parse();
 
     // start find job
     let (notify_tx, notify_rx) = std::sync::mpsc::sync_channel(1);
