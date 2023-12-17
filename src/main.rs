@@ -271,9 +271,11 @@ fn run_app(
                                                 1000,
                                             ));
                                         } else {
-                                            let _ = std::fs::remove_dir_all(
-                                                target.project_path.join("target"),
-                                            );
+                                            std::process::Command::new("cargo")
+                                                .arg("clean")
+                                                .current_dir(target.project_path.clone())
+                                                .spawn()
+                                                .expect("failed to execute process");
                                         }
                                         delete_progress.write().scanned += 1;
                                     }
