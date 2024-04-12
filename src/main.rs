@@ -319,9 +319,11 @@ fn run_app(
                         }
                         KeyCode::Char('v') => {
                             app.mode = CursorMode::Select;
+                            after_move(&mut app); // select current selected item
                         }
                         KeyCode::Char('V') => {
                             app.mode = CursorMode::Unselect;
+                            after_move(&mut app); // unselect current selected item
                         }
                         KeyCode::Char('h') => {
                             app.show_help_popup = !app.show_help_popup;
