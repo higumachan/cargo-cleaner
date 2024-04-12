@@ -1,6 +1,7 @@
 use clap::Parser;
 use std::collections::HashSet;
 use std::path::PathBuf;
+use std::process::Stdio;
 use std::sync::mpsc::SyncSender;
 use std::sync::Arc;
 use std::{error::Error, io};
@@ -274,6 +275,7 @@ fn run_app(
                                             std::process::Command::new("cargo")
                                                 .arg("clean")
                                                 .current_dir(target.project_path.clone())
+                                                .stderr(Stdio::null())
                                                 .spawn()
                                                 .expect("failed to execute process");
                                         }
