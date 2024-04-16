@@ -384,19 +384,21 @@ fn ui(f: &mut Frame, app: &mut App) {
                 row.style(Style::default().fg(Color::Green))
             }
         });
-        let t = Table::new(rows)
-            .header(header)
-            .block(Block::default().borders(Borders::ALL).title(format!(
-                "Cargo Cleaner {}",
-                if app.dry_run { "(dry-run)" } else { "" }
-            )))
-            .highlight_style(selected_style)
-            .highlight_symbol(">> ")
-            .widths(&[
+        let t = Table::new(
+            rows,
+            &[
                 Constraint::Percentage(50),
                 Constraint::Max(30),
                 Constraint::Max(10),
-            ]);
+            ],
+        )
+        .header(header)
+        .block(Block::default().borders(Borders::ALL).title(format!(
+            "Cargo Cleaner {}",
+            if app.dry_run { "(dry-run)" } else { "" }
+        )))
+        .highlight_style(selected_style)
+        .highlight_symbol(">> ");
         f.render_stateful_widget(t, rects[1], &mut app.table_state);
     }
 
