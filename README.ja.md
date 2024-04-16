@@ -1,8 +1,8 @@
 # Cargo Cleaner
 
-[English](./README.md)
-
 [cargo-clean-all](https://crates.io/crates/cargo-clean-all)にインスパイアされたTUI製のcargoのtargetファイルの削除ツールです。
+
+[English](./README.md)
 
 TUI画面でcargo projectを選択して一括でtargetディレクトリの削除(cargo clean相当)を実行することができます。
 

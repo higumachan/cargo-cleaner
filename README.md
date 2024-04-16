@@ -1,8 +1,8 @@
 # Cargo Cleaner
 
-[日本語](README.ja.md)
-
 [![Crates.io](https://img.shields.io/crates/v/cargo-cleaner.svg)](https://crates.io/crates/cargo-cleaner)
+
+[日本語](README.ja.md)
 
 Cargo Cleaner is a TUI tool inspired by [cargo-clean-all](https://crates.io/crates/cargo-clean-all) for deleting target files in cargo projects.
 
