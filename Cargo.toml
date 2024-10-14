@@ -15,15 +15,15 @@ categories = ["development-tools", "command-line-interface"]
 
 
 [dependencies]
-crossterm = "0.27.0"
-num_threads = { version = "0.1.6", features = [] }
+crossterm = "0.28.1"
+num_threads = { version = "0.1.7", features = [] }
 num_cpus = "1.16.0"
-crossbeam-channel = { version = "0.5.8", features = [] }
+crossbeam-channel = { version = "0.5.13", features = [] }
 dirs = { version = "5.0.1", features = [] }
-cargo_toml = "0.17.1"
-anyhow = { version = "1.0.75", features = ["backtrace"] }
-itertools = "0.12.0"
+cargo_toml = "0.20.5"
+anyhow = { version = "1.0.89", features = ["backtrace"] }
+itertools = "0.13.0"
 atomic-wait = "1.1.0"
-clap = { version = "4.4.11", features = ["derive"] }
-ratatui = { version = "0.26.2", features = ["all-widgets"] }
-uuid = { version = "1.6.1", features = ["serde", "v4", "fast-rng"] }
+clap = { version = "4.5.20", features = ["derive"] }
+ratatui = { version = "0.28.1", features = ["all-widgets"] }
+uuid = { version = "1.10.0", features = ["serde", "v4", "fast-rng"] }

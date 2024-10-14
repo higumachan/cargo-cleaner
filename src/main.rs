@@ -361,7 +361,7 @@ fn after_move(app: &mut App) {
 }
 
 fn ui(f: &mut Frame, app: &mut App) {
-    let height = f.size().height;
+    let height = f.area().height;
     let rects = Layout::default()
         .direction(Direction::Vertical)
         .constraints([
@@ -369,7 +369,7 @@ fn ui(f: &mut Frame, app: &mut App) {
             Constraint::Max(height - 2),
             Constraint::Max(1),
         ])
-        .split(f.size());
+        .split(f.area());
 
     {
         let selected_style = Style::default().fg(Color::White).bg(Color::Green);
@@ -436,7 +436,7 @@ fn ui(f: &mut Frame, app: &mut App) {
         let width = text.width() + 2;
         let height = text.height() + 2;
 
-        let size = f.size();
+        let size = f.area();
         let area = sized_centered_rect(width as u16, height as u16, size);
         f.render_widget(Clear, area); //this clears out the background
 
@@ -450,7 +450,7 @@ fn ui(f: &mut Frame, app: &mut App) {
 
 fn delete_popup(f: &mut Frame, app: &mut App) {
     if let Some(delete_state) = &app.delete_state {
-        let size = f.size();
+        let size = f.area();
         let block = Block::default().borders(Borders::ALL);
         let area = centered_rect(60, 30, size);
         f.render_widget(Clear, area); //this clears out the background
