@@ -27,3 +27,7 @@ atomic-wait = "1.1.0"
 clap = { version = "4.5.20", features = ["derive"] }
 ratatui = { version = "0.28.1", features = ["all-widgets"] }
 uuid = { version = "1.10.0", features = ["serde", "v4", "fast-rng"] }
+
+[dev-dependencies]
+ratatui = { version = "0.28.1", features = ["all-widgets"] }
+crossterm = "0.28.1"
