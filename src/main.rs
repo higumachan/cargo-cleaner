@@ -364,6 +364,7 @@ fn ui(f: &mut Frame, app: &mut App) {
     let height = f.area().height;
     let rects = Layout::default()
         .direction(Direction::Vertical)
+        .spacing(0)
         .constraints([
             Constraint::Max(1),
             Constraint::Max(height - 2),
@@ -397,7 +398,7 @@ fn ui(f: &mut Frame, app: &mut App) {
             "Cargo Cleaner {}",
             if app.dry_run { "(dry-run)" } else { "" }
         )))
-        .highlight_style(selected_style)
+        .row_highlight_style(selected_style)
         .highlight_symbol(">> ");
         f.render_stateful_widget(t, rects[1], &mut app.table_state);
     }
@@ -485,6 +486,7 @@ fn delete_popup(f: &mut Frame, app: &mut App) {
 fn status_bar(f: &mut Frame, app: &mut App, rect: Rect) {
     let rects = Layout::default()
         .direction(Direction::Horizontal)
+        .spacing(0)
         .constraints([
             Constraint::Min(50),
             Constraint::Min(20),
@@ -535,6 +537,7 @@ fn sized_centered_rect(min_width: u16, min_height: u16, r: Rect) -> Rect {
     let height = r.height - margin_top * 2;
     let popup_layout = Layout::default()
         .direction(Direction::Vertical)
+        .spacing(0)
         .constraints([
             Constraint::Max(margin_top),
             Constraint::Max(height),
@@ -544,6 +547,7 @@ fn sized_centered_rect(min_width: u16, min_height: u16, r: Rect) -> Rect {
 
     Layout::default()
         .direction(Direction::Horizontal)
+        .spacing(0)
         .constraints([
             Constraint::Max(margin_side),
             Constraint::Max(width),
@@ -555,6 +559,7 @@ fn sized_centered_rect(min_width: u16, min_height: u16, r: Rect) -> Rect {
 fn centered_rect(percent_x: u16, percent_y: u16, r: Rect) -> Rect {
     let popup_layout = Layout::default()
         .direction(Direction::Vertical)
+        .spacing(0)
         .constraints([
             Constraint::Percentage((100 - percent_y) / 2),
             Constraint::Percentage(percent_y),
@@ -564,6 +569,7 @@ fn centered_rect(percent_x: u16, percent_y: u16, r: Rect) -> Rect {
 
     Layout::default()
         .direction(Direction::Horizontal)
+        .spacing(0)
         .constraints([
             Constraint::Percentage((100 - percent_x) / 2),
             Constraint::Percentage(percent_x),
