@@ -357,16 +357,9 @@ fn run_app(
                         KeyCode::Char('h') => {
                             app.show_help_popup = !app.show_help_popup;
                         }
+                        #[cfg(feature = "sweep")]
                         KeyCode::Char('w') => {
-                            #[cfg(feature = "sweep")]
-                            {
-                                app.sweep_method = !app.sweep_method;
-                            }
-                            #[cfg(not(feature = "sweep"))]
-                            {
-                                eprintln!("This binary was built without the 'sweep' feature.");
-                                std::process::exit(1);
-                            }
+                            app.sweep_method = !app.sweep_method;
                         }
                         KeyCode::Esc => {
                             app.show_help_popup = false;
