@@ -329,6 +329,114 @@ fn test_status_bar() {
     assert!(content.contains("Unselect"));
 }
 
+/// Test clean operation in dry-run mode
+#[test]
+fn test_clean_operation() {
+    let backend = TestBackend::new(100, 30);
+    let mut terminal = Terminal::new(backend).unwrap();
+    let (tx, _rx) = sync_channel(1);
+    let scan_progress = Arc::new(NotifyRwLock::new(
+        tx.clone(),
+        Progress {
+            total: 0,
+            scanned: 0,
+        },
+    ));
+    let mut app = App::new(true, tx, scan_progress); // true for dry-run mode
+
+    // Add mock items to clean
+    {
+        let mut items = app.items.write();
+        items.push(ProjectTargetAnalysis {
+            project_path: std::path::PathBuf::from("/test/path1"),
+            project_name: Some("test-project-1".to_string()),
+            size: 1024 * 1024 * 1024, // 1GB
+            selected_for_cleanup: true,
+            last_modified: SystemTime::now(),
+            id: Uuid::new_v4(),
+        });
+        items.push(ProjectTargetAnalysis {
+            project_path: std::path::PathBuf::from("/test/path2"),
+            project_name: Some("test-project-2".to_string()),
+            size: 2 * 1024 * 1024 * 1024, // 2GB
+            selected_for_cleanup: true,
+            last_modified: SystemTime::now(),
+            id: Uuid::new_v4(),
+        });
+    }
+
+    // Initial render to verify items are present
+    terminal
+        .draw(|frame| {
+            ui(frame, &mut app);
+        })
+        .unwrap();
+
+    let initial_buffer = terminal.backend().buffer().clone();
+    let initial_content = buffer_content_to_string(&initial_buffer);
+
+    // Verify both items are initially visible
+    assert!(initial_content.contains("/test/path1"));
+    assert!(initial_content.contains("test-project-1"));
+    assert!(initial_content.contains("/test/path2"));
+    assert!(initial_content.contains("test-project-2"));
+
+    // Select items for cleanup
+    {
+        let items = app.items.read();
+        for item in items.iter() {
+            app.selected_items.insert(item.id);
+        }
+    }
+
+    // Trigger clean operation
+    app.handle_key(KeyCode::Char('d')); // Open delete confirmation
+    assert!(matches!(app.delete_state, Some(DeleteState::Confirm)));
+
+    app.handle_key(KeyCode::Char('Y')); // Confirm deletion with uppercase Y
+
+    // Wait for delete operation to start
+    assert!(matches!(app.delete_state, Some(DeleteState::Deleting(_))));
+
+    // Get the progress handle and complete the operation
+    if let Some(DeleteState::Deleting(progress)) = &app.delete_state {
+        let total = progress.read().total;
+        progress.write().scanned = total;
+
+        // Trigger state update by pressing 'd'
+        app.handle_key(KeyCode::Char('d'));
+
+        // Verify operation completed
+        assert!(app.delete_state.is_none());
+        assert!(app.selected_items.is_empty());
+
+        // Verify items were removed from the list
+        assert_eq!(app.items.read().len(), 0);
+    } else {
+        panic!("Delete operation did not transition to Deleting state");
+    }
+
+    // Re-render UI after clean operation
+    terminal
+        .draw(|frame| {
+            ui(frame, &mut app);
+        })
+        .unwrap();
+
+    let final_buffer = terminal.backend().buffer().clone();
+    let final_content = buffer_content_to_string(&final_buffer);
+
+    // Verify items are no longer visible after clean operation
+    assert!(!final_content.contains("/test/path1"));
+    assert!(!final_content.contains("test-project-1"));
+    assert!(!final_content.contains("/test/path2"));
+    assert!(!final_content.contains("test-project-2"));
+
+    // Verify clean operation completed
+    assert!(app.delete_state.is_none());
+    assert!(app.selected_items.is_empty());
+}
+
 fn buffer_content_to_string(buffer: &Buffer) -> String {
     buffer.content().iter().map(|cell| cell.symbol()).join("")
 }
