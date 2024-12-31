@@ -283,12 +283,25 @@ fn run_app(
                                             ));
                                         } else {
                                             let _ = if app.sweep_method {
-                                                std::process::Command::new("cargo")
-                                                    .arg("sweep")
-                                                    .current_dir(target.project_path.clone())
-                                                    .stderr(Stdio::null())
-                                                    .spawn()
-                                                    .expect("failed to execute cargo sweep")
+                                                #[cfg(feature = "sweep")]
+                                                {
+                                                    std::process::Command::new("cargo")
+                                                        .arg("sweep")
+                                                        .current_dir(target.project_path.clone())
+                                                        .stderr(Stdio::null())
+                                                        .spawn()
+                                                        .expect("failed to execute cargo sweep")
+                                                }
+                                                #[cfg(not(feature = "sweep"))]
+                                                {
+                                                    eprintln!("This binary was built without the 'sweep' feature.");
+                                                    std::process::Command::new("cargo")
+                                                        .arg("clean")
+                                                        .current_dir(target.project_path.clone())
+                                                        .stderr(Stdio::null())
+                                                        .spawn()
+                                                        .expect("failed to execute process")
+                                                }
                                             } else {
                                                 std::process::Command::new("cargo")
                                                     .arg("clean")
@@ -350,7 +363,14 @@ fn run_app(
                             app.show_help_popup = !app.show_help_popup;
                         }
                         KeyCode::Char('w') => {
-                            app.sweep_method = !app.sweep_method;
+                            #[cfg(feature = "sweep")]
+                            {
+                                app.sweep_method = !app.sweep_method;
+                            }
+                            #[cfg(not(feature = "sweep"))]
+                            {
+                                eprintln!("This binary was built without the 'sweep' feature.");
+                            }
                         }
                         KeyCode::Esc => {
                             app.show_help_popup = false;
@@ -532,13 +552,21 @@ fn status_bar(f: &mut Frame, app: &mut App, rect: Rect) {
     let paragraph = Paragraph::new(text).block(block);
     f.render_widget(paragraph, rects[0]);
 
+    #[cfg(feature = "sweep")]
     let clean_mode = if app.sweep_method {
         "[SWEEP]"
     } else {
         "[CLEAN]"
     };
+    #[cfg(not(feature = "sweep"))]
+    let clean_mode = "[CLEAN]";
+
     let help_text = Span::styled(
-        format!("h: help  w: toggle {} mode", clean_mode),
+        if cfg!(feature = "sweep") {
+            format!("h: help  w: toggle {} mode", clean_mode)
+        } else {
+            "h: help".to_string()
+        },
         Style::default().fg(Color::Green),
     );
     let block = Block::default();
