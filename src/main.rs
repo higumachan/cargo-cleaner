@@ -70,6 +70,7 @@ struct App {
     scan_progress: Arc<NotifyRwLock<Progress>>,
     delete_state: Option<DeleteState>,
     dry_run: bool,
+    sweep_method: bool,
     mode: CursorMode,
     show_help_popup: bool,
     notify_tx: SyncSender<()>,
@@ -78,6 +79,7 @@ struct App {
 impl App {
     fn new(
         dry_run: bool,
+        sweep_method: bool,
         notify_tx: SyncSender<()>,
         scan_progress: Arc<NotifyRwLock<Progress>>,
     ) -> App {
@@ -90,6 +92,7 @@ impl App {
             mode: CursorMode::Normal,
             show_help_popup: false,
             dry_run,
+            sweep_method,
             notify_tx,
         }
     }
@@ -138,6 +141,8 @@ struct Args {
     search_root: Option<String>,
     #[arg(short = 'p', long)]
     scan_workers: Option<usize>,
+    #[arg(long, default_value = "false")]
+    sweep_method: bool,
 }
 
 fn main() -> Result<(), Box<dyn Error>> {
@@ -164,7 +169,12 @@ fn main() -> Result<(), Box<dyn Error>> {
     let mut terminal = Terminal::new(backend)?;
 
     // create app and run it
-    let app = App::new(args.dry_run, notify_tx, scan_progress.clone());
+    let app = App::new(
+        args.dry_run,
+        args.sweep_method,
+        notify_tx,
+        scan_progress.clone(),
+    );
     let items = Arc::clone(&app.items);
 
     std::thread::spawn(move || {
@@ -272,12 +282,21 @@ fn run_app(
                                                 1000,
                                             ));
                                         } else {
-                                            std::process::Command::new("cargo")
-                                                .arg("clean")
-                                                .current_dir(target.project_path.clone())
-                                                .stderr(Stdio::null())
-                                                .spawn()
-                                                .expect("failed to execute process");
+                                            let _ = if app.sweep_method {
+                                                std::process::Command::new("cargo")
+                                                    .arg("sweep")
+                                                    .current_dir(target.project_path.clone())
+                                                    .stderr(Stdio::null())
+                                                    .spawn()
+                                                    .expect("failed to execute cargo sweep")
+                                            } else {
+                                                std::process::Command::new("cargo")
+                                                    .arg("clean")
+                                                    .current_dir(target.project_path.clone())
+                                                    .stderr(Stdio::null())
+                                                    .spawn()
+                                                    .expect("failed to execute process")
+                                            };
                                         }
                                         delete_progress.write().scanned += 1;
                                     }
@@ -329,6 +348,9 @@ fn run_app(
                         }
                         KeyCode::Char('h') => {
                             app.show_help_popup = !app.show_help_popup;
+                        }
+                        KeyCode::Char('w') => {
+                            app.sweep_method = !app.sweep_method;
                         }
                         KeyCode::Esc => {
                             app.show_help_popup = false;
@@ -510,7 +532,15 @@ fn status_bar(f: &mut Frame, app: &mut App, rect: Rect) {
     let paragraph = Paragraph::new(text).block(block);
     f.render_widget(paragraph, rects[0]);
 
-    let help_text = Span::styled("h: help", Style::default().fg(Color::Green));
+    let clean_mode = if app.sweep_method {
+        "[SWEEP]"
+    } else {
+        "[CLEAN]"
+    };
+    let help_text = Span::styled(
+        format!("h: help  w: toggle {} mode", clean_mode),
+        Style::default().fg(Color::Green),
+    );
     let block = Block::default();
     let paragraph = Paragraph::new(help_text).block(block);
     f.render_widget(paragraph, rects[1]);
