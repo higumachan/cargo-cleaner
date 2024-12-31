@@ -52,40 +52,19 @@ fn test_tui_rendering() {
 
     let content_str = buffer_content_to_string(&buffer);
 
+    // Verify title and mode
     assert!(content_str.contains("Cargo Cleaner"));
-    // TODO(devin): 上のケースを参考にして書き直す
-    // assert!(buffer
-    //     .content
-    //     .iter()
-    //     .any(|cell| cell.symbol().contains("Cargo Cleaner")));
-    // assert!(buffer
-    //     .content
-    //     .iter()
-    //     .any(|cell| cell.symbol().contains("(dry-run)")));
-    //
-    // // Verify table headers are present
-    // assert!(buffer
-    //     .content
-    //     .iter()
-    //     .any(|cell| cell.symbol().contains("Path")));
-    // assert!(buffer
-    //     .content
-    //     .iter()
-    //     .any(|cell| cell.symbol().contains("Last Modified")));
-    // assert!(buffer
-    //     .content
-    //     .iter()
-    //     .any(|cell| cell.symbol().contains("Size")));
-    //
-    // // Verify mock data is displayed
-    // assert!(buffer
-    //     .content
-    //     .iter()
-    //     .any(|cell| cell.symbol().contains("/test/path")));
-    // assert!(buffer
-    //     .content
-    //     .iter()
-    //     .any(|cell| cell.symbol().contains("1.00 MiB")));
+    assert!(content_str.contains("(dry-run)"));
+
+    // Verify table headers are present
+    assert!(content_str.contains("Project Path"));
+    assert!(content_str.contains("Project Name"));
+    assert!(content_str.contains("Size(GiB)"));
+
+    // Verify mock data is displayed
+    assert!(content_str.contains("/test/path"));
+    assert!(content_str.contains("1.00 GiB")); // 1GB should be displayed as 1.00 GiB
+    assert!(content_str.contains("test-project")); // Verify project name is displayed
 }
 
 /// Test navigation and selection behavior
@@ -129,28 +108,29 @@ fn test_navigation_and_selection() {
     app.handle_key(KeyCode::Char('j')); // Move down
     assert_eq!(app.table_state.selected(), Some(2)); // No around
 
-    // TODO(@devin): 上のケースを参考にして書き直す
-    // // Test previous() navigation
-    // app.previous();
-    // assert_eq!(app.table_state.selected(), Some(2));
-    // app.previous();
-    // assert_eq!(app.table_state.selected(), Some(1));
-    //
-    // // Test after_move behavior in different modes
-    // app.mode = CursorMode::Select;
-    // after_move(&mut app);
-    // {
-    //     let items = app.items.read();
-    //     assert!(app.selected_items.contains(&items[1].id));
-    // }
-    //
-    // app.mode = CursorMode::Unselect;
-    // app.next();
-    // after_move(&mut app);
-    // {
-    //     let items = app.items.read();
-    //     assert!(!app.selected_items.contains(&items[2].id));
-    // }
+    // Test previous() navigation using 'k' key
+    app.handle_key(KeyCode::Char('k')); // Move up
+    assert_eq!(app.table_state.selected(), Some(1));
+    app.handle_key(KeyCode::Char('k')); // Move up
+    assert_eq!(app.table_state.selected(), Some(0));
+    app.handle_key(KeyCode::Char('k')); // Move up
+    assert_eq!(app.table_state.selected(), Some(0)); // Should stay at first item
+
+    // Test after_move behavior in different modes
+    app.mode = CursorMode::Select;
+    after_move(&mut app);
+    {
+        let items = app.items.read();
+        assert!(app.selected_items.contains(&items[0].id));
+    }
+
+    app.mode = CursorMode::Unselect;
+    app.handle_key(KeyCode::Char('j')); // Move down
+    after_move(&mut app);
+    {
+        let items = app.items.read();
+        assert!(!app.selected_items.contains(&items[1].id));
+    }
 }
 
 /// Test cursor mode transitions and effects
