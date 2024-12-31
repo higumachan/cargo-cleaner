@@ -295,12 +295,7 @@ fn run_app(
                                                 #[cfg(not(feature = "sweep"))]
                                                 {
                                                     eprintln!("This binary was built without the 'sweep' feature.");
-                                                    std::process::Command::new("cargo")
-                                                        .arg("clean")
-                                                        .current_dir(target.project_path.clone())
-                                                        .stderr(Stdio::null())
-                                                        .spawn()
-                                                        .expect("failed to execute process")
+                                                    std::process::exit(1);
                                                 }
                                             } else {
                                                 std::process::Command::new("cargo")
@@ -370,6 +365,7 @@ fn run_app(
                             #[cfg(not(feature = "sweep"))]
                             {
                                 eprintln!("This binary was built without the 'sweep' feature.");
+                                std::process::exit(1);
                             }
                         }
                         KeyCode::Esc => {
