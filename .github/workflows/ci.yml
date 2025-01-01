@@ -1,0 +1,29 @@
+name: Rust CI
+
+on:
+  push:
+    branches: [ main ]
+  pull_request:
+    branches: [ main ]
+
+env:
+  CARGO_TERM_COLOR: always
+
+jobs:
+  check:
+    name: Check
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@stable
+        with:
+          components: rustfmt, clippy
+      
+      - name: Format Check
+        run: cargo fmt --all -- --check
+      
+      - name: Clippy Check
+        run: cargo clippy -- -D warnings
+      
+      - name: Run Tests
+        run: cargo test --verbose
