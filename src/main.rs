@@ -399,7 +399,7 @@ fn ui(f: &mut Frame, app: &mut App) {
             "Cargo Cleaner {}",
             if app.dry_run { "(dry-run)" } else { "" }
         )))
-        .highlight_style(selected_style)
+        .row_highlight_style(selected_style)
         .highlight_symbol(">> ");
         f.render_stateful_widget(t, rects[1], &mut app.table_state);
     }
