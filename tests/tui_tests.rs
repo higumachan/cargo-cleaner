@@ -312,13 +312,19 @@ fn test_no_delete_popup_when_empty_selection() {
     }
 
     // Verify no delete popup initially
-    assert!(app.delete_state.is_none());
+    assert!(
+        app.delete_state.is_none(),
+        "Delete state should be None initially before pressing 'd' key"
+    );
 
     // Try to trigger delete popup with 'd' key when no items selected
     app.handle_key(KeyCode::Char('d'));
 
     // Verify delete popup did not appear
-    assert!(app.delete_state.is_none());
+    assert!(
+        app.delete_state.is_none(),
+        "Delete state should remain None after pressing 'd' key with no items selected"
+    );
     terminal
         .draw(|frame| {
             ui(frame, &mut app);
@@ -326,7 +332,10 @@ fn test_no_delete_popup_when_empty_selection() {
         .unwrap();
     let buffer = terminal.backend().buffer().clone();
     let content = buffer_content_to_string(&buffer);
-    assert!(!content.contains("Are you sure"));
+    assert!(
+        !content.contains("Are you sure"),
+        "Delete confirmation popup should not appear in the UI when no items are selected"
+    );
 }
 
 /// Test status bar rendering
