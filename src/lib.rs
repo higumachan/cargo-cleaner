@@ -2,6 +2,9 @@ pub mod notify_rw_lock;
 pub mod tui;
 pub mod tui_app;
 
+/// Size of one gibibyte (GiB) in bytes
+pub const GIB_SIZE: u64 = 1024 * 1024 * 1024;
+
 use crate::notify_rw_lock::{NotifyRwLock, NotifySender};
 use cargo_toml::Manifest;
 use crossbeam_channel::{unbounded, Receiver, Sender};
