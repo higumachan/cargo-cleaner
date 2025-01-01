@@ -1,5 +1,6 @@
 pub mod notify_rw_lock;
 pub mod tui;
+pub mod tui_app;
 
 use crate::notify_rw_lock::{NotifyRwLock, NotifySender};
 use cargo_toml::Manifest;
