@@ -163,7 +163,7 @@ mod tests {
         let waiter_list = NotifyRwLock::new(tx, Vec::new());
         black_box(&waiter_list);
 
-        let start = Instant::now();
+        let _start = Instant::now();
         std::thread::scope(|s| {
             let t1 = s.spawn({
                 || {
@@ -185,7 +185,7 @@ mod tests {
             });
             let t3 = s.spawn({
                 || {
-                    for i in 0..1000 {
+                    for _i in 0..1000 {
                         let c = waiter_list.read();
                         black_box(&c);
                     }
