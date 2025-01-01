@@ -157,6 +157,22 @@ impl App {
                         },
                     ));
                     self.delete_state = Some(DeleteState::Deleting(delete_progress.clone()));
+                    let dry_run = self.dry_run;
+                    std::thread::spawn(move || {
+                        for target in remove_targets {
+                            if dry_run {
+                                std::thread::sleep(std::time::Duration::from_millis(1000));
+                            } else {
+                                std::process::Command::new("cargo")
+                                    .arg("clean")
+                                    .current_dir(target.project_path.clone())
+                                    .stderr(std::process::Stdio::null())
+                                    .spawn()
+                                    .expect("failed to execute process");
+                            }
+                            delete_progress.write().scanned += 1;
+                        }
+                    });
                 }
             }
             KeyCode::Char('n') => {
