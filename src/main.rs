@@ -277,7 +277,9 @@ fn run_app(
                                                 .current_dir(target.project_path.clone())
                                                 .stderr(Stdio::null())
                                                 .spawn()
-                                                .expect("failed to execute process");
+                                                .expect("failed to execute process")
+                                                .wait()
+                                                .expect("failed to wait on process");
                                         }
                                         delete_progress.write().scanned += 1;
                                     }
