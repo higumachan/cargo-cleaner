@@ -280,6 +280,52 @@ fn test_delete_popup() {
     assert!(content.contains("Are you sure you want to delete"));
 }
 
+/// Test that delete popup doesn't appear when no items are selected
+#[test]
+fn test_no_delete_popup_when_empty_selection() {
+    let backend = TestBackend::new(100, 30);
+    let mut terminal = Terminal::new(backend).unwrap();
+    let (tx, _rx) = sync_channel(1);
+    let scan_progress = Arc::new(NotifyRwLock::new(
+        tx.clone(),
+        Progress {
+            total: 0,
+            scanned: 0,
+        },
+    ));
+    let mut app = App::new(true, tx, scan_progress);
+
+    // Add some items but don't select any
+    {
+        let mut items = app.items.write();
+        items.push(ProjectTargetAnalysis {
+            project_path: std::path::PathBuf::from("/test/path"),
+            project_name: Some("test-project".to_string()),
+            size: 1024 * 1024 * 1024,
+            selected_for_cleanup: false,
+            last_modified: SystemTime::now(),
+            id: Uuid::new_v4(),
+        });
+    }
+
+    // Verify no delete popup initially
+    assert!(app.delete_state.is_none());
+
+    // Try to trigger delete popup with 'd' key when no items selected
+    app.handle_key(KeyCode::Char('d'));
+
+    // Verify delete popup did not appear
+    assert!(app.delete_state.is_none());
+    terminal
+        .draw(|frame| {
+            ui(frame, &mut app);
+        })
+        .unwrap();
+    let buffer = terminal.backend().buffer().clone();
+    let content = buffer_content_to_string(&buffer);
+    assert!(!content.contains("Are you sure"));
+}
+
 /// Test status bar rendering
 #[test]
 fn test_status_bar() {

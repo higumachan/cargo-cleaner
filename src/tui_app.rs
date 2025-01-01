@@ -130,7 +130,11 @@ impl App {
                         }
                     }
                     None => {
-                        self.delete_state = Some(DeleteState::Confirm);
+                        if self.selected_items.is_empty() {
+                            // Do nothing - modal should not appear when no items are selected
+                        } else {
+                            self.delete_state = Some(DeleteState::Confirm);
+                        }
                     }
                 }
                 if is_reset {
