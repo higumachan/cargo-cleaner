@@ -1,7 +1,7 @@
 use cargo_cleaner::{
     notify_rw_lock::NotifyRwLock,
     tui_app::{after_move, ui, App, CursorMode, DeleteState},
-    Progress, ProjectTargetAnalysis,
+    Progress, ProjectTargetAnalysis, GIB_SIZE,
 };
 use crossterm::event::KeyCode;
 use itertools::Itertools;
@@ -10,7 +10,6 @@ use std::sync::mpsc::sync_channel;
 use std::sync::Arc;
 use std::time::SystemTime;
 use uuid::Uuid;
-use cargo_cleaner::GIB_SIZE;
 
 fn make_project_target(
     name: &str,

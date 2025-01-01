@@ -2,6 +2,9 @@ pub mod notify_rw_lock;
 pub mod tui;
 pub mod tui_app;
 
+/// Size of one gibibyte (GiB) in bytes
+pub const GIB_SIZE: u64 = 1024 * 1024 * 1024;
+
 use crate::notify_rw_lock::{NotifyRwLock, NotifySender};
 use cargo_toml::Manifest;
 use crossbeam_channel::{unbounded, Receiver, Sender};
@@ -9,9 +12,6 @@ use std::path::{Path, PathBuf};
 use std::sync::Arc;
 use std::time::SystemTime;
 use uuid::Uuid;
-
-/// Size of one gibibyte (GiB) in bytes
-pub const GIB_SIZE: u64 = 1024 * 1024 * 1024;
 
 /// Job for the threaded project finder. First the path to be searched, second the sender to create
 /// new jobs for recursively searching the dirs
