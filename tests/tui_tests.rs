@@ -10,6 +10,7 @@ use std::sync::mpsc::sync_channel;
 use std::sync::Arc;
 use std::time::SystemTime;
 use uuid::Uuid;
+use cargo_cleaner::GIB_SIZE;
 
 fn make_project_target(
     name: &str,
