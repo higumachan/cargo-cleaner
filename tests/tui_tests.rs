@@ -11,6 +11,22 @@ use std::sync::Arc;
 use std::time::SystemTime;
 use uuid::Uuid;
 
+fn make_project_target(
+    name: &str,
+    size: u64,
+    selected_for_cleanup: bool,
+    path: Option<String>,
+) -> ProjectTargetAnalysis {
+    ProjectTargetAnalysis {
+        project_path: std::path::PathBuf::from(path.unwrap_or_else(|| "/test/path".to_string())),
+        project_name: Some(name.to_string()),
+        size,
+        selected_for_cleanup,
+        last_modified: SystemTime::now(),
+        id: Uuid::new_v4(),
+    }
+}
+
 /// Test the basic TUI rendering functionality and table content
 #[test]
 fn test_tui_rendering() {
@@ -29,14 +45,12 @@ fn test_tui_rendering() {
     // Add some mock data to the items
     {
         let mut items = app.items.write();
-        items.push(ProjectTargetAnalysis {
-            project_path: std::path::PathBuf::from("/test/path"),
-            project_name: Some("test-project".to_string()),
-            size: 1024 * 1024 * 1024, // 1GB
-            selected_for_cleanup: true,
-            last_modified: SystemTime::now(),
-            id: Uuid::new_v4(),
-        });
+        items.push(make_project_target(
+            "test-project",
+            GIB_SIZE, // 1GB
+            true,
+            None,
+        ));
     }
 
     // Render the UI
@@ -84,14 +98,12 @@ fn test_navigation_and_selection() {
     {
         let mut items = app.items.write();
         for i in 0..3 {
-            items.push(ProjectTargetAnalysis {
-                project_path: std::path::PathBuf::from(format!("/test/path{}", i)),
-                project_name: Some(format!("test-project-{}", i)),
-                size: 1024 * 1024 * 1024, // 1GB
-                selected_for_cleanup: true,
-                last_modified: SystemTime::now(),
-                id: Uuid::new_v4(),
-            });
+            items.push(make_project_target(
+                &format!("test-project-{}", i),
+                GIB_SIZE, // 1GB
+                true,
+                Some(format!("/test/path{}", i)),
+            ));
         }
     }
 
@@ -149,14 +161,12 @@ fn test_cursor_mode_transitions() {
     // Add a mock item
     let item_id = {
         let mut items = app.items.write();
-        let item = ProjectTargetAnalysis {
-            project_path: std::path::PathBuf::from("/test/path"),
-            project_name: Some("test-project".to_string()),
-            size: 1024 * 1024 * 1024, // 1GB
-            selected_for_cleanup: true,
-            last_modified: SystemTime::now(),
-            id: Uuid::new_v4(),
-        };
+        let item = make_project_target(
+            "test-project",
+            GIB_SIZE, // 1GB
+            true,
+            None,
+        );
         let id = item.id;
         items.push(item);
         id
@@ -298,14 +308,7 @@ fn test_no_delete_popup_when_empty_selection() {
     // Add some items but don't select any
     {
         let mut items = app.items.write();
-        items.push(ProjectTargetAnalysis {
-            project_path: std::path::PathBuf::from("/test/path"),
-            project_name: Some("test-project".to_string()),
-            size: 1024 * 1024 * 1024,
-            selected_for_cleanup: false,
-            last_modified: SystemTime::now(),
-            id: Uuid::new_v4(),
-        });
+        items.push(make_project_target("test-project", GIB_SIZE, false, None));
     }
 
     // Verify no delete popup initially
@@ -393,22 +396,18 @@ fn test_clean_operation() {
     // Add mock items to clean
     {
         let mut items = app.items.write();
-        items.push(ProjectTargetAnalysis {
-            project_path: std::path::PathBuf::from("/test/path1"),
-            project_name: Some("test-project-1".to_string()),
-            size: 1024 * 1024 * 1024, // 1GB
-            selected_for_cleanup: true,
-            last_modified: SystemTime::now(),
-            id: Uuid::new_v4(),
-        });
-        items.push(ProjectTargetAnalysis {
-            project_path: std::path::PathBuf::from("/test/path2"),
-            project_name: Some("test-project-2".to_string()),
-            size: 2 * 1024 * 1024 * 1024, // 2GB
-            selected_for_cleanup: true,
-            last_modified: SystemTime::now(),
-            id: Uuid::new_v4(),
-        });
+        items.push(make_project_target(
+            "test-project-1",
+            GIB_SIZE, // 1GB
+            true,
+            Some("/test/path1".to_string()),
+        ));
+        items.push(make_project_target(
+            "test-project-2",
+            2 * GIB_SIZE, // 2GB
+            true,
+            Some("/test/path2".to_string()),
+        ));
     }
 
     // Initial render to verify items are present

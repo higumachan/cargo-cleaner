@@ -10,6 +10,9 @@ use std::sync::Arc;
 use std::time::SystemTime;
 use uuid::Uuid;
 
+/// Size of one gibibyte (GiB) in bytes
+pub const GIB_SIZE: u64 = 1024 * 1024 * 1024;
+
 /// Job for the threaded project finder. First the path to be searched, second the sender to create
 /// new jobs for recursively searching the dirs
 struct Job(PathBuf, Sender<Job>);

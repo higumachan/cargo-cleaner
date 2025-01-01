@@ -10,6 +10,7 @@ use uuid::Uuid;
 use crate::notify_rw_lock::NotifyRwLock;
 use crate::Progress;
 use crate::ProjectTargetAnalysis;
+use crate::GIB_SIZE;
 
 const DELETE_COMMAND_KEY: char = 'd';
 const COLUMNS: usize = 3;
@@ -33,11 +34,8 @@ impl TableRow for ProjectTargetAnalysis {
             Cell::from(self.project_path.to_str().unwrap()).style(Style::default()),
             Cell::from(self.project_name.as_deref().unwrap_or("NOT FOUND NAME"))
                 .style(Style::default()),
-            Cell::from(format!(
-                "{:.2}GiB",
-                self.size as f64 / (1024.0 * 1024.0 * 1024.0)
-            ))
-            .style(Style::default()),
+            Cell::from(format!("{:.2}GiB", self.size as f64 / (GIB_SIZE as f64)))
+                .style(Style::default()),
         ]
     }
 }
@@ -130,9 +128,7 @@ impl App {
                         }
                     }
                     None => {
-                        if self.selected_items.is_empty() {
-                            // Do nothing - modal should not appear when no items are selected
-                        } else {
+                        if !self.selected_items.is_empty() {
                             self.delete_state = Some(DeleteState::Confirm);
                         }
                     }
@@ -388,14 +384,13 @@ pub fn status_bar(f: &mut Frame, app: &mut App, rect: Rect) {
         ])
         .split(rect);
     let items = app.items.read();
-    let total_gib_size =
-        items.iter().map(|it| it.size).sum::<u64>() as f64 / (1024.0 * 1024.0 * 1024.0);
+    let total_gib_size = items.iter().map(|it| it.size).sum::<u64>() as f64 / (GIB_SIZE as f64);
     let selected_gib_size = items
         .iter()
         .filter(|it| app.selected_items.contains(&it.id))
         .map(|it| it.size)
         .sum::<u64>() as f64
-        / (1024.0 * 1024.0 * 1024.0);
+        / (GIB_SIZE as f64);
 
     let status_text = format!(
         "Total: {:.2} GiB, Selected: {:.2} GiB",
