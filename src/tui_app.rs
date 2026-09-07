@@ -17,7 +17,7 @@ const COLUMNS: usize = 3;
 
 pub trait TableRow {
     fn header() -> [Cell<'static>; COLUMNS];
-    fn cells(&self) -> [Cell; COLUMNS];
+    fn cells(&self) -> [Cell<'_>; COLUMNS];
 }
 
 impl TableRow for ProjectTargetAnalysis {
@@ -29,7 +29,7 @@ impl TableRow for ProjectTargetAnalysis {
         ]
     }
 
-    fn cells(&self) -> [Cell; COLUMNS] {
+    fn cells(&self) -> [Cell<'_>; COLUMNS] {
         [
             Cell::from(self.project_path.to_str().unwrap()).style(Style::default()),
             Cell::from(self.project_name.as_deref().unwrap_or("NOT FOUND NAME"))
