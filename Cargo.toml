@@ -1,7 +1,8 @@
 [package]
 name = "cargo-cleaner"
 version = "0.1.5"
-edition = "2021"
+edition = "2024"
+rust-version = "1.85"
 authors = ["Yuta Hinokuma <yuta.hinokuma725@gmail.com>"]
 license = "MIT"
 homepage = "https://github.com/higumachan/cargo-cleaner"

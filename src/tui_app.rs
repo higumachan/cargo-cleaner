@@ -3,21 +3,21 @@ use itertools::Itertools;
 use ratatui::prelude::*;
 use ratatui::widgets::*;
 use std::collections::HashSet;
-use std::sync::mpsc::SyncSender;
 use std::sync::Arc;
+use std::sync::mpsc::SyncSender;
 use uuid::Uuid;
 
-use crate::notify_rw_lock::NotifyRwLock;
+use crate::GIB_SIZE;
 use crate::Progress;
 use crate::ProjectTargetAnalysis;
-use crate::GIB_SIZE;
+use crate::notify_rw_lock::NotifyRwLock;
 
 const DELETE_COMMAND_KEY: char = 'd';
 const COLUMNS: usize = 3;
 
 pub trait TableRow {
     fn header() -> [Cell<'static>; COLUMNS];
-    fn cells(&self) -> [Cell; COLUMNS];
+    fn cells(&self) -> [Cell<'_>; COLUMNS];
 }
 
 impl TableRow for ProjectTargetAnalysis {
@@ -29,7 +29,7 @@ impl TableRow for ProjectTargetAnalysis {
         ]
     }
 
-    fn cells(&self) -> [Cell; COLUMNS] {
+    fn cells(&self) -> [Cell<'_>; COLUMNS] {
         [
             Cell::from(self.project_path.to_str().unwrap()).style(Style::default()),
             Cell::from(self.project_name.as_deref().unwrap_or("NOT FOUND NAME"))

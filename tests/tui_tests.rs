@@ -1,13 +1,13 @@
 use cargo_cleaner::{
+    GIB_SIZE, Progress, ProjectTargetAnalysis,
     notify_rw_lock::NotifyRwLock,
-    tui_app::{after_move, ui, App, CursorMode, DeleteState},
-    Progress, ProjectTargetAnalysis, GIB_SIZE,
+    tui_app::{App, CursorMode, DeleteState, after_move, ui},
 };
 use crossterm::event::KeyCode;
 use itertools::Itertools;
-use ratatui::{backend::TestBackend, buffer::Buffer, Terminal};
-use std::sync::mpsc::sync_channel;
+use ratatui::{Terminal, backend::TestBackend, buffer::Buffer};
 use std::sync::Arc;
+use std::sync::mpsc::sync_channel;
 use std::time::SystemTime;
 use uuid::Uuid;
 

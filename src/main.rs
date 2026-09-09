@@ -4,15 +4,15 @@ use std::{error::Error, io};
 
 use cargo_cleaner::find_cargo_projects;
 use cargo_cleaner::tui::{Event, Tui};
-use cargo_cleaner::tui_app::{ui, App};
+use cargo_cleaner::tui_app::{App, ui};
 use crossterm::{
     event::{DisableMouseCapture, EnableMouseCapture, Event as CrosstermEvent},
     execute,
-    terminal::{disable_raw_mode, enable_raw_mode, EnterAlternateScreen, LeaveAlternateScreen},
+    terminal::{EnterAlternateScreen, LeaveAlternateScreen, disable_raw_mode, enable_raw_mode},
 };
 use dirs::home_dir;
-use ratatui::prelude::CrosstermBackend;
 use ratatui::Terminal;
+use ratatui::prelude::CrosstermBackend;
 use std::sync::Arc;
 
 #[derive(Parser)] // requires `derive` feature
