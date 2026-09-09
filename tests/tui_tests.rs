@@ -1,9 +1,10 @@
 use cargo_cleaner::{
     GIB_SIZE, Progress, ProjectTargetAnalysis,
     notify_rw_lock::NotifyRwLock,
+    tui::key_code_if_pressed_or_repeat,
     tui_app::{App, CursorMode, DeleteState, after_move, ui},
 };
-use crossterm::event::KeyCode;
+use crossterm::event::{Event as CrosstermEvent, KeyCode, KeyEvent, KeyEventKind, KeyModifiers};
 use itertools::Itertools;
 use ratatui::{Terminal, backend::TestBackend, buffer::Buffer};
 use std::sync::Arc;
@@ -489,6 +490,116 @@ fn test_clean_operation() {
     // Verify clean operation completed
     assert!(app.delete_state.is_none());
     assert!(app.selected_items.is_empty());
+}
+
+fn key_event(kind: KeyEventKind, code: KeyCode) -> CrosstermEvent {
+    CrosstermEvent::Key(KeyEvent::new_with_kind(code, KeyModifiers::NONE, kind))
+}
+
+fn handle_crossterm_key(app: &mut App, ev: &CrosstermEvent) {
+    if let Some(code) = key_code_if_pressed_or_repeat(ev) {
+        let _ = app.handle_key(code);
+    }
+}
+
+fn make_navigable_app(item_count: usize) -> App {
+    let (tx, _rx) = sync_channel(1);
+    let scan_progress = Arc::new(NotifyRwLock::new(
+        tx.clone(),
+        Progress {
+            total: 0,
+            scanned: 0,
+        },
+    ));
+    let app = App::new(true, tx, scan_progress);
+    {
+        let mut items = app.items.write();
+        for i in 0..item_count {
+            items.push(make_project_target(
+                &format!("test-project-{}", i),
+                GIB_SIZE,
+                true,
+                Some(format!("/test/path{}", i)),
+            ));
+        }
+    }
+    app
+}
+
+#[test]
+fn test_key_code_if_pressed_or_repeat_filters_event_kind() {
+    let press = key_event(KeyEventKind::Press, KeyCode::Char('j'));
+    let repeat = key_event(KeyEventKind::Repeat, KeyCode::Char('j'));
+    let release = key_event(KeyEventKind::Release, KeyCode::Char('j'));
+    let resize = CrosstermEvent::Resize(80, 24);
+
+    assert_eq!(
+        key_code_if_pressed_or_repeat(&press),
+        Some(KeyCode::Char('j'))
+    );
+    assert_eq!(
+        key_code_if_pressed_or_repeat(&repeat),
+        Some(KeyCode::Char('j'))
+    );
+    assert_eq!(key_code_if_pressed_or_repeat(&release), None);
+    assert_eq!(key_code_if_pressed_or_repeat(&resize), None);
+}
+
+#[test]
+fn test_release_does_not_move_cursor_twice() {
+    let mut app = make_navigable_app(3);
+    assert_eq!(app.table_state.selected(), None);
+
+    handle_crossterm_key(
+        &mut app,
+        &key_event(KeyEventKind::Press, KeyCode::Char('j')),
+    );
+    handle_crossterm_key(
+        &mut app,
+        &key_event(KeyEventKind::Release, KeyCode::Char('j')),
+    );
+
+    assert_eq!(app.table_state.selected(), Some(0));
+}
+
+#[test]
+fn test_mac_style_press_repeat_moves_cursor_each_time() {
+    let mut app = make_navigable_app(3);
+
+    handle_crossterm_key(
+        &mut app,
+        &key_event(KeyEventKind::Press, KeyCode::Char('j')),
+    );
+    handle_crossterm_key(
+        &mut app,
+        &key_event(KeyEventKind::Press, KeyCode::Char('j')),
+    );
+    handle_crossterm_key(
+        &mut app,
+        &key_event(KeyEventKind::Press, KeyCode::Char('j')),
+    );
+
+    assert_eq!(app.table_state.selected(), Some(2));
+}
+
+#[test]
+fn test_windows_style_key_repeat_moves_cursor() {
+    let mut app = make_navigable_app(3);
+
+    handle_crossterm_key(
+        &mut app,
+        &key_event(KeyEventKind::Press, KeyCode::Char('j')),
+    );
+    handle_crossterm_key(
+        &mut app,
+        &key_event(KeyEventKind::Repeat, KeyCode::Char('j')),
+    );
+    handle_crossterm_key(
+        &mut app,
+        &key_event(KeyEventKind::Release, KeyCode::Char('j')),
+    );
+
+    assert_eq!(app.table_state.selected(), Some(1));
 }
 
 fn buffer_content_to_string(buffer: &Buffer) -> String {

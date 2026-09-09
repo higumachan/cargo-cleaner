@@ -3,10 +3,10 @@ use std::path::PathBuf;
 use std::{error::Error, io};
 
 use cargo_cleaner::find_cargo_projects;
-use cargo_cleaner::tui::{Event, Tui};
+use cargo_cleaner::tui::{Event, Tui, key_code_if_pressed_or_repeat};
 use cargo_cleaner::tui_app::{App, ui};
 use crossterm::{
-    event::{DisableMouseCapture, EnableMouseCapture, Event as CrosstermEvent},
+    event::{DisableMouseCapture, EnableMouseCapture},
     execute,
     terminal::{EnterAlternateScreen, LeaveAlternateScreen, disable_raw_mode, enable_raw_mode},
 };
@@ -110,8 +110,8 @@ fn run_app(
         match tui.read_event()? {
             Event::AsyncUpdate => {}
             Event::Parent(ev) => {
-                if let CrosstermEvent::Key(key) = ev
-                    && app.handle_key(key.code).is_none()
+                if let Some(code) = key_code_if_pressed_or_repeat(&ev)
+                    && app.handle_key(code).is_none()
                 {
                     return Ok(());
                 }
