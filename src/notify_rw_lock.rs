@@ -31,7 +31,7 @@ impl<T> NotifyRwLock<T> {
         let mut s = self.state.load(Ordering::Relaxed);
 
         loop {
-            if s % 2 == 0 {
+            if s.is_multiple_of(2) {
                 assert!(s < u32::MAX - 2, "too many readers");
                 match self.state.compare_exchange_weak(
                     s,
@@ -72,14 +72,13 @@ impl<T> NotifyRwLock<T> {
                     }
                 }
             }
-            if s % 2 == 0 {
-                if let Err(e) =
+            if s.is_multiple_of(2)
+                && let Err(e) =
                     self.state
                         .compare_exchange(s, s + 1, Ordering::Relaxed, Ordering::Relaxed)
-                {
-                    s = e;
-                    continue;
-                }
+            {
+                s = e;
+                continue;
             }
             let w = self.writer_wake_counter.load(Ordering::Acquire);
             s = self.state.load(Ordering::Relaxed);

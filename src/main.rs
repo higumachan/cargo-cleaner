@@ -110,10 +110,10 @@ fn run_app(
         match tui.read_event()? {
             Event::AsyncUpdate => {}
             Event::Parent(ev) => {
-                if let CrosstermEvent::Key(key) = ev {
-                    if app.handle_key(key.code).is_none() {
-                        return Ok(());
-                    }
+                if let CrosstermEvent::Key(key) = ev
+                    && app.handle_key(key.code).is_none()
+                {
+                    return Ok(());
                 }
             }
         }
