@@ -7,7 +7,7 @@ pub const GIB_SIZE: u64 = 1024 * 1024 * 1024;
 
 use crate::notify_rw_lock::{NotifyRwLock, NotifySender};
 use cargo_toml::Manifest;
-use crossbeam_channel::{unbounded, Receiver, Sender};
+use crossbeam_channel::{Receiver, Sender, unbounded};
 use std::path::{Path, PathBuf};
 use std::sync::Arc;
 use std::time::SystemTime;

@@ -63,3 +63,21 @@ cargo cleaner -r <directory>
 ```
 
 By specifying the -r option, cargo cleaner will search for Cargo projects with target directories of positive size in all directories under the specified directory.
+
+## Development Tests
+
+Run the regular tests with `cargo test --locked`.
+
+Run the `NotifyRwLock` progress tests with [Loom](https://docs.rs/loom/0.7.2/loom/):
+
+```bash
+RUSTFLAGS="--cfg loom" cargo test --locked --lib notify_rw_lock::loom::tests
+```
+
+`waiting_writer_completes_after_writer_is_replaced_by_reader` checks that a waiting
+writer still completes when another writer unlocks and a reader acquires the lock
+before the waiting writer goes to sleep. It guards against a missed writer wakeup.
+
+Only the library unit tests switch to Loom's atomics and a modeled wait/wake
+backend. The model tests lock progress, not payload access or the application
+notification channel. See `src/notify_rw_lock/loom.rs` for its limitations.

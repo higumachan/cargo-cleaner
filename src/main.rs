@@ -3,16 +3,16 @@ use std::path::PathBuf;
 use std::{error::Error, io};
 
 use cargo_cleaner::find_cargo_projects;
-use cargo_cleaner::tui::{key_code_if_pressed_or_repeat, Event, Tui};
-use cargo_cleaner::tui_app::{ui, App};
+use cargo_cleaner::tui::{Event, Tui, key_code_if_pressed_or_repeat};
+use cargo_cleaner::tui_app::{App, ui};
 use crossterm::{
     event::{DisableMouseCapture, EnableMouseCapture},
     execute,
-    terminal::{disable_raw_mode, enable_raw_mode, EnterAlternateScreen, LeaveAlternateScreen},
+    terminal::{EnterAlternateScreen, LeaveAlternateScreen, disable_raw_mode, enable_raw_mode},
 };
 use dirs::home_dir;
-use ratatui::prelude::CrosstermBackend;
 use ratatui::Terminal;
+use ratatui::prelude::CrosstermBackend;
 use std::sync::Arc;
 
 #[derive(Parser)] // requires `derive` feature
@@ -110,10 +110,10 @@ fn run_app(
         match tui.read_event()? {
             Event::AsyncUpdate => {}
             Event::Parent(ev) => {
-                if let Some(code) = key_code_if_pressed_or_repeat(&ev) {
-                    if app.handle_key(code).is_none() {
-                        return Ok(());
-                    }
+                if let Some(code) = key_code_if_pressed_or_repeat(&ev)
+                    && app.handle_key(code).is_none()
+                {
+                    return Ok(());
                 }
             }
         }

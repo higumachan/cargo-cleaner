@@ -1,14 +1,14 @@
 use cargo_cleaner::{
+    GIB_SIZE, Progress, ProjectTargetAnalysis,
     notify_rw_lock::NotifyRwLock,
     tui::key_code_if_pressed_or_repeat,
-    tui_app::{after_move, ui, App, CursorMode, DeleteState},
-    Progress, ProjectTargetAnalysis, GIB_SIZE,
+    tui_app::{App, CursorMode, DeleteState, after_move, ui},
 };
 use crossterm::event::{Event as CrosstermEvent, KeyCode, KeyEvent, KeyEventKind, KeyModifiers};
 use itertools::Itertools;
-use ratatui::{backend::TestBackend, buffer::Buffer, Terminal};
-use std::sync::mpsc::sync_channel;
+use ratatui::{Terminal, backend::TestBackend, buffer::Buffer};
 use std::sync::Arc;
+use std::sync::mpsc::sync_channel;
 use std::time::SystemTime;
 use uuid::Uuid;
 
