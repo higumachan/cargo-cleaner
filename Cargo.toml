@@ -30,5 +30,9 @@ ratatui = { version = "0.30.2", features = ["all-widgets"] }
 uuid = { version = "1.26.0", features = ["serde", "v4", "fast-rng"] }
 
 [dev-dependencies]
+loom = "0.7.2"
 ratatui = { version = "0.30.2", features = ["all-widgets"] }
 crossterm = "0.29.0"
+
+[lints.rust]
+unexpected_cfgs = { level = "warn", check-cfg = ['cfg(loom)'] }

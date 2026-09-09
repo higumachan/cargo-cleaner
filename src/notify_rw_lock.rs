@@ -1,7 +1,14 @@
+#[cfg(not(all(test, loom)))]
 use atomic_wait::{wait, wake_all, wake_one};
 use std::cell::UnsafeCell;
 use std::ops::{Deref, DerefMut};
+#[cfg(not(all(test, loom)))]
 use std::sync::atomic::{AtomicU32, Ordering};
+
+#[cfg(all(test, loom))]
+mod loom;
+#[cfg(all(test, loom))]
+use self::loom::{AtomicU32, Ordering, wait, wake_all, wake_one};
 
 const WRITE_LOCK_STATE: u32 = u32::MAX;
 const READ_LOCK_STEP: u32 = 2;
@@ -82,7 +89,10 @@ impl<T> NotifyRwLock<T> {
             }
             let w = self.writer_wake_counter.load(Ordering::Acquire);
             s = self.state.load(Ordering::Relaxed);
-            if s >= READ_LOCK_STEP {
+            // A writer may have unlocked and a reader acquired the lock since
+            // we checked the pending bit. If it is now clear, retry to set it:
+            // otherwise the last reader will not wake us when it unlocks.
+            if s >= READ_LOCK_STEP && s % 2 == 1 {
                 wait(&self.writer_wake_counter, w);
                 s = self.state.load(Ordering::Relaxed);
             }
@@ -150,7 +160,7 @@ impl<T> DerefMut for WriteGuard<'_, T> {
     }
 }
 
-#[cfg(test)]
+#[cfg(all(test, not(loom)))]
 mod tests {
     use super::*;
     use std::hint::black_box;
